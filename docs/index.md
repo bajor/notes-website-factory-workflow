@@ -9,5 +9,5 @@ okf_version: "0.1"
 - [Product requirements](/prd/index.md): accepted product requirements.
 - [Architecture decisions](/adr/index.md): confirmed structural decisions.
 - [Behavior decisions](/bdr/index.md): observable contracts and test design.
-- [Implementation issues](/issues/index.md): execution records.
+- [Implementation records](/issues/index.md): completed execution history.
 - [Context](/context/index.md): project vocabulary.

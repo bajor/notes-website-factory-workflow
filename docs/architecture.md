@@ -139,7 +139,7 @@ flowchart TD
   Raw --> Validate --> Valid --> Emit --> Affine --> Browser
 ```
 
-The deployed product never contains a full-page PDF image. During the build, topic recognition detects relative frame geometry from a removable low-resolution composited render, asks Poppler for only each accepted high-resolution interior, and removes all temporary images before promotion. Low-alpha content remains lossless RGBA unless the pure geometry-and-chroma profile positively identifies an elongated highlighter stroke, whose nonzero pixels become opaque. The shared viewer composes each PDF image matrix with the image-sample vertical orientation, preserving rotation and shear for raster and traced artwork. Tesseract labels remain normal-mode interaction metadata and never replace source pixels. Oversized evaluation scales use bounded Chromium viewports that `Factory.Evaluation` stitches before applying the same complete-image comparison. Data-flow drift is caught by focused tests, real-consumer evaluation, and review of this diagram.
+The deployed product receives only the validated scene and its extracted assets. Source PDFs, topic-detection renders, OCR crops, and evaluation images stay in build space. The [support profile](/pdf-investigation.md) owns parsing compatibility and classification details; accepted BDRs own observable output behavior.
 
 ## Module Boundaries
 
@@ -160,21 +160,13 @@ The deployed product never contains a full-page PDF image. During the build, top
 
 ## Safety Boundaries
 
-1. `discoverSinglePdf` scans only the consumer source root and requires one non-symlink PDF.
-2. The parser requires exactly one page and fails on unsupported structures.
-3. `classifyImage` rejects empty and all-zero masks, preserves nonzero masks with no traceable sample, then applies the `0.01` raster boundary, the ambiguity interval, and the `0.02` vector boundary to traceable masks.
-4. `validateScene` checks dimensions, references, finite values, paint values including miter limits and dash patterns, opacities, and the full-board-raster prohibition by testing every board corner against the transformed image bounds.
-5. Existing removable locations are canonicalized, while symlink targets and unresolved symlink parents are rejected; removable paths cannot overlap source, templates, or another independently owned output root.
-6. Output is written to `DIST.building` before atomic-style promotion through `DIST.previous`.
-7. Distribution checks require product files, relative references, no PDF, and no Canvas fallback without assuming scene counts.
-8. The Pages artifact is uploaded only after parsing, validation, browser readiness, and both visual scales pass.
-9. A game target requires HTTPS, the exact case-insensitive host `bajor.github.io`, no credentials or explicit port, path `/algo-arcade/`, and a non-empty `#/games/` fragment route. Matching never uses substring checks.
-10. The game badge appears only in normal interactive mode; evaluation mode retains the native link hit area but draws only PDF-derived pixels.
-11. Topic detection uses relative chroma and border geometry on a fixed-resolution composited render; it cannot depend on a consumer hue, resource name, board dimension, or expected count.
-12. Topic detection and crop paths remain inside removable staging space, are removed before promotion, and cannot enter the Pages artifact.
-13. Poppler or Tesseract process failure aborts the build; successful empty OCR receives a deterministic non-source fallback label.
-14. A low-alpha raster becomes opaque only when at least 95 percent of visible pixels are chromatic and its aspect ratio is at least `4:1`; the policy cannot depend on consumer identity or resource name.
-15. Evaluation viewports are at most `8192x4096` pixels; larger reference dimensions are captured with deterministic offsets and stitched before full-image comparison.
+1. `discoverSinglePdf` scans only the consumer source root and requires one non-symlink PDF with one page.
+2. The parser and `validateScene` reject unsupported source structures, invalid scene values, and full-board raster output.
+3. Removable paths are canonicalized, reject symlink targets and unresolved symlink parents, and cannot overlap protected inputs or independently owned outputs.
+4. Output is staged in `DIST.building`, promoted through `DIST.previous`, and checked for product files, relative references, no PDF, and no Canvas fallback.
+5. OCR, topic detection, and evaluation inputs remain removable build artifacts; process failures abort the build.
+6. The Pages artifact is uploaded only after parsing, validation, browser readiness, and both visual scales pass.
+7. Link classification, highlighter opacity, topic detection, and tiled evaluation policies are specified by the linked ADRs and BDRs below.
 
 ## Determinism and Compatibility
 

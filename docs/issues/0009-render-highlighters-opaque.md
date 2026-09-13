@@ -2,7 +2,7 @@
 type: Issue
 title: Render highlighter strokes as opaque
 description: Make positively identified Freeform highlighter strokes opaque without changing unrelated low-alpha content.
-status: In Progress
+status: Done
 timestamp: 2026-08-29
 ---
 # Render Highlighter Strokes as Opaque
