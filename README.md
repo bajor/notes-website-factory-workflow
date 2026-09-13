@@ -49,11 +49,9 @@ Other files may remain in the consumer repository. The reusable workflow needs o
 
 ## How to Use It
 
-1. Export one supported Freeform board as a PDF and add it to a consumer repository.
-2. In the consumer repository, open **Settings > Pages** and select **GitHub Actions** as the source.
-3. Create `.github/workflows/pages.yml` with the workflow below.
-4. Replace `My Notes` with the browser title and accessible viewer name for the board.
-5. Open a pull request to test the build without deploying. Merge to `main` to deploy.
+Start with the [Notes Website Template](https://github.com/bajor/notes-website-template) to get the caller workflow. After creating a repository from it, enable GitHub Pages with **GitHub Actions** as its source and add one supported PDF.
+
+To configure an existing repository instead, create `.github/workflows/pages.yml` with the workflow below.
 
 ```yaml
 name: Publish Notes
