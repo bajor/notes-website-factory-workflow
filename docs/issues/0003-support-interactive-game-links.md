@@ -2,7 +2,7 @@
 type: Issue
 title: Support interactive Algo Arcade game links
 description: Accept the refreshed consumer cards, type exact game routes, render a badge, and redeploy the consumer.
-status: In Progress
+status: Done
 timestamp: 2026-08-23
 ---
 # Support Interactive Algo Arcade Game Links

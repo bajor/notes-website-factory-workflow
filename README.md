@@ -2,50 +2,17 @@
 
 Notes Website Factory turns a one-page Apple Freeform PDF into a responsive, zoomable static website. A consumer repository supplies the PDF, a site title, and a GitHub Actions caller workflow. This repository supplies the Haskell generator, shared viewer, visual evaluation, and deployable Pages artifact.
 
-The generated site renders scene data, inline SVG artwork, links, and extracted raster assets. It does not ship or parse the source PDF in the browser.
-
-## What You Can Use It For
-
-- Publish a one-page Freeform board as a website without maintaining a backend.
-- Share visual study notes, diagrams, or mixed screenshot-and-handwriting boards with topic navigation, fit, zoom, and pan interactions.
-- Rebuild and visually validate the site whenever the source PDF changes.
-- Keep source content and deployment policy in a separate repository while reusing one build pipeline.
-
-This is not a general-purpose PDF converter, document editor, or optical character recognition tool.
-
-## Pros and Cons
-
-### Pros
-
-- Produces static files that can be hosted under any GitHub Pages project path.
-- Validates the generated page against Poppler reference renders before publishing it.
-- Preserves screenshots as raster images and traces supported Freeform artwork into scalable SVG.
-- Supports mouse, touch, keyboard, fit-to-screen, zoom, pan, and build-time topic navigation.
-- Keeps deployment credentials and policy out of the reusable build workflow.
-- Fails the build instead of publishing a Pages artifact when parsing, validation, or visual evaluation fails.
-
-### Cons
-
-- Accepts one-page PDFs from the documented Apple Freeform export profile, not arbitrary PDFs.
-- Does not recover editable Freeform objects or semantic handwriting. SVG tracing is deterministic but lossy.
-- Does not support PDF text, page rotation, general image transforms, or several valid PDF structures.
-- Documents outside the supported profile are not guaranteed to build or render correctly.
-- Topic labels use best-effort English handwriting OCR and can contain recognition mistakes.
-- The hosted setup targets GitHub Actions and GitHub Pages. Other deployment systems require a separate integration.
-- Referencing the workflow at `@main` picks up future factory changes; pin a full commit SHA when immutable behavior is required.
-
-See the [Apple Freeform PDF support profile](docs/pdf-investigation.md) for the exact supported features and limitations.
+The generated site renders scene data, inline SVG artwork, links, and extracted raster assets. It does not ship or parse the source PDF in the browser. It is not a general-purpose PDF converter, editor, or OCR tool; see the [Apple Freeform PDF support profile](docs/pdf-investigation.md) for the supported export profile and limitations.
 
 ## Requirements
 
 A consumer repository needs:
 
-- exactly one non-symlink PDF discovered recursively outside `.git`, `build`, `dist`, `dist.building`, `dist.previous`, `dist-newstyle`, and `node_modules` directories;
-- exactly one page in that PDF;
+- exactly one non-symlink, one-page PDF;
 - a non-empty `site-title` without control characters;
 - GitHub Pages configured with **GitHub Actions** as its source.
 
-Other files may remain in the consumer repository. The reusable workflow needs only `contents: read`; the consumer's deployment job owns Pages and OpenID Connect permissions.
+Other files may remain in the consumer repository. PDF discovery exclusions, the supported profile, and failure behavior are defined in the [support profile](docs/pdf-investigation.md). The reusable workflow needs only `contents: read`; the consumer's deployment job owns Pages and OpenID Connect permissions.
 
 ## How to Use It
 

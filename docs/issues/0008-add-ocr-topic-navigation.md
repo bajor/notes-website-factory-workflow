@@ -2,7 +2,7 @@
 type: Issue
 title: Add OCR topic navigation
 description: Detect highlighter-framed headings, label them with local OCR, and navigate to their board positions.
-status: In Progress
+status: Done
 timestamp: 2026-08-29
 ---
 # Add OCR Topic Navigation
