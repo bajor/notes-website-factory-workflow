@@ -13,3 +13,4 @@
 - [BDR 0011: Opaque highlighter output](/bdr/0011-opaque-highlighter-output.md) - Accepted. Define the highlighter exception to low-alpha rendering.
 - [BDR 0012: Searchable topic menu](/bdr/0012-searchable-topic-menu.md) - Superseded by BDR 0013.
 - [BDR 0013: Remove topic navigation](/bdr/0013-remove-topic-navigation.md) - Accepted. Expose only direct board navigation and Fit.
+- [BDR 0014: Smooth traced SVG artwork](/bdr/0014-smooth-traced-svg-artwork.md) - Accepted. Simplify pixel-grid staircases in traced SVG artwork.

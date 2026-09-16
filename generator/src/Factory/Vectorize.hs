@@ -61,7 +61,7 @@ maximumVectorPoints :: Int
 maximumVectorPoints = 500000
 
 simplificationToleranceSquared :: Double
-simplificationToleranceSquared = 1
+simplificationToleranceSquared = 4
 
 minimumHighlighterAspect :: Int
 minimumHighlighterAspect = 4

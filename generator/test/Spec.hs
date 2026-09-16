@@ -169,6 +169,10 @@ vectorizationTests =
         case traceImage vectorImageWithHole of
           Right [shape] -> Text.count "M" (unVectorPath (vectorPath shape)) @?= 2
           result -> assertFailure ("unexpected trace result: " <> show result)
+    , testCase "diagonal staircases omit pixel-grid turns" $
+        case traceImage diagonalStaircaseImage of
+          Right [shape] -> unVectorPath (vectorPath shape) @?= "M0,0L1,0L1,0.833333Z"
+          result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "nonzero highlighter pixels become opaque without changing RGB" $
         case opaqueHighlighter translucentHighlighter of
           Just image -> pixelAt image 0 0 @?= PixelRGBA8 255 192 0 255
@@ -421,6 +425,16 @@ vectorImageWithHole = generateImage pixel 3 3
   where
     pixel 1 1 = PixelRGBA8 0 0 0 0
     pixel _ _ = PixelRGBA8 0 0 0 255
+
+diagonalStaircaseImage :: Image PixelRGBA8
+diagonalStaircaseImage = generateImage pixel 6 6
+  where
+    pixel x y
+      | x >= y + offset y = PixelRGBA8 0 0 0 255
+      | otherwise = PixelRGBA8 0 0 0 0
+    offset y
+      | even y = 0
+      | otherwise = 1
 
 translucentHighlighter :: Image PixelRGBA8
 translucentHighlighter = generateImage (\_ _ -> PixelRGBA8 255 192 0 89) 12 2
