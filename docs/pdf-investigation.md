@@ -46,7 +46,7 @@ Classification uses the soft-mask samples before tracing, in this order:
 - traceable masks with a non-opaque sample fraction below `0.02` but above `0.01`: fail as ambiguous;
 - traceable masks with a non-opaque sample fraction of at least `0.02`: trace as vector.
 
-Tracing quantizes RGB channels in steps of 32, treats alpha below 96 as untraceable, combines same-color boundaries into even-odd paths, normalizes coordinates to the source image, and simplifies contours with a one-pixel squared tolerance. A mask made entirely of nonzero untraceable samples stays raster instead of being dropped. Its nonzero pixels become opaque only when the accepted elongated, chromatic highlighter profile applies; other low-alpha rasters retain source alpha. Four-corner contours are preserved so small holes cannot collapse into diagonals. The browser restores each image XObject's PDF transform when it renders the SVG path data.
+Tracing quantizes RGB channels in steps of 32, treats alpha below 96 as untraceable, combines same-color boundaries into even-odd paths, normalizes coordinates to the source image, and simplifies contours with a four-pixel squared tolerance. A mask made entirely of nonzero untraceable samples stays raster instead of being dropped. Its nonzero pixels become opaque only when the accepted elongated, chromatic highlighter profile applies; other low-alpha rasters retain source alpha. Four-corner contours are preserved so small holes cannot collapse into diagonals. The browser restores each image XObject's PDF transform when it renders the SVG path data.
 
 ## Selected Library
 

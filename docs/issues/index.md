@@ -10,3 +10,4 @@
 - [Issue 0008: Add OCR topic navigation](/issues/0008-add-ocr-topic-navigation.md) - Done. Label highlighter-framed headings and navigate to their positions.
 - [Issue 0009: Render highlighter strokes as opaque](/issues/0009-render-highlighters-opaque.md) - Done. Make positively identified Freeform highlighter strokes opaque.
 - [Issue 0010: Remove OCR topic navigation](/issues/0010-remove-ocr-topic-navigation.md) - Done. Delete topic recognition, metadata, and controls.
+- [Issue 0011: Smooth traced SVG artwork](/issues/0011-smooth-traced-svg-artwork.md) - In Progress. Smooth vector contour staircases and redeploy the target consumer.
