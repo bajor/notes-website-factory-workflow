@@ -2,8 +2,9 @@
 type: ADR
 title: Detect topics from a composited build render
 description: Use a temporary low-resolution page render for frame geometry and bounded high-resolution crops for OCR.
-status: Accepted
+status: Superseded
 supersedes: "0007"
+superseded_by: "0010"
 timestamp: 2026-08-29
 ---
 # Detect Topics from a Composited Build Render

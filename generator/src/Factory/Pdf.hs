@@ -79,7 +79,6 @@ data PdfSummary = PdfSummary
   , summaryVectorCount :: Int
   , summaryRasterCount :: Int
   , summaryLinkCount :: Int
-  , summaryTopicCount :: Int
   , summaryWidth :: Double
   , summaryHeight :: Double
   }
@@ -143,9 +142,8 @@ parseOpenPdf assetDirectory pdf = do
           , sceneHeight = Coordinate height
           , sceneAssets = assets
           , sceneContent = contentNodes <> links
-          , sceneTopics = []
           }
-      summary = PdfSummary 1 (length operators) (Map.size preparedImages) vectorCount rasterCount (length links) 0 width height
+      summary = PdfSummary 1 (length operators) (Map.size preparedImages) vectorCount rasterCount (length links) width height
   pure (ParsedPdf scene summary)
 
 isPreparedVector :: PreparedImage -> Bool

@@ -1,8 +1,8 @@
 ---
 type: Context
 title: Project glossary
-description: Definitions for PDF rendering, topic navigation, workflow reuse, artifacts, and evaluation.
-timestamp: 2026-08-29
+description: Definitions for PDF rendering, workflow reuse, artifacts, and evaluation.
+timestamp: 2026-09-16
 ---
 # Glossary
 
@@ -58,21 +58,9 @@ The non-interactive browser rendering mode selected by the evaluator at a specif
 
 Poppler's development-only rendering of the source PDF, used as an independent visual reference for Chromium output.
 
-## Topic Frame
-
-A closed, thick, chromatic border detected from a temporary composited page render. Its inner rectangle supplies a bounded OCR crop, and its outer board-space rectangle supplies a navigation target.
-
 ## Highlighter Stroke
 
 A translucent, elongated Freeform image whose visible pixels are overwhelmingly chromatic. The factory preserves its RGB and geometry but emits nonzero pixels at full opacity.
-
-## Topic Index
-
-The normal-mode `Topics` disclosure whose labels come from build-time OCR and whose actions navigate to stored topic-frame bounds. It is interaction metadata rather than reconstructed source content.
-
-## OCR
-
-Optical character recognition. The factory runs local English Tesseract on bounded topic crops during the build; no OCR engine, detection render, or source crop enters the generated site.
 
 ## Factory Repository
 

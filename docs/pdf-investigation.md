@@ -1,8 +1,8 @@
 ---
 type: Reference
 title: Apple Freeform PDF support profile
-description: Historical evidence, supported parsing and topic behavior, classification policy, and explicit limitations.
-timestamp: 2026-08-29
+description: Historical evidence, supported parsing, classification policy, and explicit limitations.
+timestamp: 2026-09-16
 ---
 # Apple Freeform PDF Support Profile
 
@@ -23,13 +23,11 @@ timestamp: 2026-08-29
 - no PDF font resources or text-showing operators;
 - no painted native vector paths in the resulting scene.
 
-The board's visible handwriting and shapes are already raster data inside image XObjects. Their original Freeform geometry is not present in the PDF. The generator traces eligible artwork pixels into SVG contours; this improves zoom behavior but is deterministic and lossy. Production parsing still rejects PDF text until font decoding, glyph metrics, and positioning are implemented. Constitution Amendment 2 separately permits best-effort OCR of bounded topic headings for normal-mode navigation labels, never as a replacement for source pixels.
+The board's visible handwriting and shapes are already raster data inside image XObjects. Their original Freeform geometry is not present in the PDF. The generator traces eligible artwork pixels into SVG contours; this improves zoom behavior but is deterministic and lossy. Production parsing rejects PDF text until font decoding, glyph metrics, and positioning are implemented.
 
 The consumer revision `cac4d34` supplied a second production observation on 2026-08-23. `Algos 2.pdf` has 41 image XObjects, 34 substantially transparent artwork resources, 5 opaque screenshots, 2 near-opaque linked cards, and 2 URI annotations. The annotations identify one YouTube video and `https://bajor.github.io/algo-arcade/#/games/next-greater-element`. The linked cards' non-opaque sample fractions are `0.008181576` and `0.008124226`; the least-transparent artwork resource is `0.033626205`. These values establish a measured gap without becoming expected reusable-workflow counts.
 
 The consumer revision `1bdf230` supplied a third production observation on 2026-08-24. One image has a `134784`-sample soft mask with `108924` nonzero samples, a range from `0` through `89`, and no sample at or above the vector tracer's alpha cutoff of `96`. PDF renderers retain the faint image, but vector tracing would remove every pixel. This observation establishes the source-independent low-alpha raster branch without hard-coding its resource name, dimensions, or consumer identity in production logic.
-
-The consumer revision `1bdf230` also supplied the topic-navigation observation on 2026-08-29. The rendered page contains 12 headings enclosed by thick yellow highlighter frames. Content-stream transforms show overlapping image XObjects for a frame and its handwriting, so detection uses a temporary composited `36 DPI` render and OCR uses composited bounded crops rather than one resource's pixels. The production detector uses relative border geometry and chroma instead of the observed hue or count; 12 is consumer evidence, not a reusable acceptance constant.
 
 One low-alpha raster in revision `1bdf230` is an elongated yellow highlighter stroke. The product requirement makes positively identified highlighter strokes opaque while preserving RGB, geometry, and transparent pixels. Compact chromatic images and other low-alpha content retain source alpha.
 
@@ -70,7 +68,6 @@ The parser currently supports the subset required by the observed Freeform expor
 - JPEG image streams and 8-bit Flate streams using DeviceGray, DeviceRGB, or one/three-component ICCBased color spaces;
 - Flate soft masks with matching dimensions;
 - deterministic soft-mask classification, lossless low-alpha raster preservation, and SVG contour tracing for the observed transparent artwork profile;
-- relative-geometry detection of thick chromatic highlighter frames from a temporary composited render and bounded English OCR for topic navigation metadata;
 - opaque materialization of translucent, elongated, overwhelmingly chromatic highlighter strokes;
 - URI link annotations and validated HTTP/HTTPS URLs;
 - typed game links for HTTPS `bajor.github.io` URLs with path `/algo-arcade/`, no credentials or explicit port, and a non-empty `#/games/` fragment route;
@@ -99,13 +96,13 @@ The following valid PDF features are not yet generalized:
 - internal destinations and non-URI annotation actions.
 - game providers, custom domains, or `bajor.github.io` pages outside the exact Algo Arcade game-route profile; these remain ordinary external links.
 
-Tracing does not recover semantic strokes, editable handwriting, original Freeform objects, gradients, or subpixel source geometry. Pixels at supported transparency levels become opaque quantized SVG fills. Low-alpha content remains raster; only positively identified highlighter strokes replace nonzero alpha with `255`. Opaque content remains raster rather than being guessed into vectors. Topic labels are explicitly best-effort OCR and are not a source representation.
+Tracing does not recover semantic strokes, editable handwriting, original Freeform objects, gradients, or subpixel source geometry. Pixels at supported transparency levels become opaque quantized SVG fills. Low-alpha content remains raster; only positively identified highlighter strokes replace nonzero alpha with `255`. Opaque content remains raster rather than being guessed into vectors.
 
 Unsupported operators fail with a typed error. Some unsupported structures have dedicated errors, while others are rejected by scene validation. A future parser increment should begin with a real source file demonstrating one missing feature, then add one focused test and one minimal implementation.
 
 ## Evaluation Oracle
 
-Poppler's `pdftoppm` renders one temporary topic-detection image at 36 DPI, bounded topic interiors at 216 DPI, and reference PNGs at 18 and 72 DPI for development evaluation. Detection and OCR images are temporary and never enter the site artifact. Headless Chromium renders the generated site at matching evaluation dimensions. Dimensions beyond the `8192`-pixel width or `4096`-pixel height capture limits are captured in deterministic tiles and stitched before comparison so browser surface limits do not constrain supported board dimensions. `Factory.Evaluation` checks browser readiness, compares every pixel, measures total ink, and writes:
+Poppler's `pdftoppm` renders reference PNGs at 18 and 72 DPI for development evaluation. Headless Chromium renders the generated site at matching evaluation dimensions. Dimensions beyond the `8192`-pixel width or `4096`-pixel height capture limits are captured in deterministic tiles and stitched before comparison so browser surface limits do not constrain supported board dimensions. `Factory.Evaluation` checks browser readiness, compares every pixel, measures total ink, and writes:
 
 ```text
 build/evaluation/

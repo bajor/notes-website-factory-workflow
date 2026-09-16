@@ -57,10 +57,4 @@ export const scene = {
       bounds: { x: 20, y: 100, width: 60, height: 20 },
     },
   ],
-  topics: [
-    {
-      label: 'Prefix Sum',
-      bounds: { x: 70, y: 20, width: 60, height: 30 },
-    },
-  ],
 };

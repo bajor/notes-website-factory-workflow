@@ -11,4 +11,5 @@
 - [BDR 0009: Topic index navigation](/bdr/0009-topic-index-navigation.md) - Superseded by BDR 0010.
 - [BDR 0010: Composited topic index navigation](/bdr/0010-composited-topic-index-navigation.md) - Superseded by BDR 0012.
 - [BDR 0011: Opaque highlighter output](/bdr/0011-opaque-highlighter-output.md) - Accepted. Define the highlighter exception to low-alpha rendering.
-- [BDR 0012: Searchable topic menu](/bdr/0012-searchable-topic-menu.md) - Accepted. Define compact controls, conditional search, and menu navigation.
+- [BDR 0012: Searchable topic menu](/bdr/0012-searchable-topic-menu.md) - Superseded by BDR 0013.
+- [BDR 0013: Remove topic navigation](/bdr/0013-remove-topic-navigation.md) - Accepted. Expose only direct board navigation and Fit.

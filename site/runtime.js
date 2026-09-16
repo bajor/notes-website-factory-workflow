@@ -4,12 +4,6 @@ const viewport = document.querySelector('#viewport');
 const board = document.querySelector('#board');
 const status = document.querySelector('#status');
 const controls = document.querySelector('#controls');
-const topicPanel = document.querySelector('#topic-panel');
-const topicList = document.querySelector('#topic-list');
-const topicSearch = document.querySelector('.topic-search');
-const topicSearchInput = document.querySelector('#topic-search');
-const topicEmpty = document.querySelector('#topic-empty');
-const topicsButton = document.querySelector('[data-action="topics"]');
 const evaluationParameters = new URLSearchParams(window.location.search);
 const evaluationDpi = Number(evaluationParameters.get('evaluation'));
 const evaluationX = Number(evaluationParameters.get('evaluation-x')) || 0;
@@ -17,8 +11,6 @@ const evaluationY = Number(evaluationParameters.get('evaluation-y')) || 0;
 const evaluationMode = Number.isFinite(evaluationDpi) && evaluationDpi > 0;
 const readinessMode = evaluationMode && evaluationParameters.has('readiness');
 const svgNamespace = 'http://www.w3.org/2000/svg';
-const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-const topicSearchThreshold = 10;
 
 const view = { scale: 1, x: 0, y: 0 };
 const pointers = new Map();
@@ -27,7 +19,6 @@ let pinchStart = null;
 let sceneSvg;
 let clipDefinitions;
 let clipSequence = 0;
-let viewAnimation = null;
 
 void initialize();
 
@@ -35,7 +26,6 @@ async function initialize() {
   try {
     if (evaluationMode) {
       controls.hidden = true;
-      topicPanel.hidden = true;
       // PDF coordinates use 72 points per inch, so DPI / 72 gives the
       // matching browser scale for each evaluation resolution.
       view.scale = evaluationDpi / 72;
@@ -44,7 +34,6 @@ async function initialize() {
       applyView();
     } else {
       installControls();
-      if (buildTopicList()) setTopicPanelOpen(false);
       fitBoard();
     }
     await buildScene();
@@ -260,17 +249,6 @@ function createSvgElement(name) {
 }
 
 function installControls() {
-  topicsButton.addEventListener('click', () => {
-    const open = topicPanel.hidden;
-    setTopicPanelOpen(open);
-    if (open) (topicSearch.hidden ? topicList.querySelector('button') : topicSearchInput)?.focus();
-  });
-  topicPanel.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
-    setTopicPanelOpen(false);
-    topicsButton.focus();
-  });
-  topicSearchInput.addEventListener('input', filterTopics);
   document.querySelector('[data-action="fit"]').addEventListener('click', fitBoard);
   viewport.addEventListener('wheel', onWheel, { passive: false });
   viewport.addEventListener('pointerdown', onPointerDown);
@@ -279,78 +257,6 @@ function installControls() {
   viewport.addEventListener('pointercancel', onPointerEnd);
   viewport.addEventListener('keydown', onKeyDown);
   window.addEventListener('resize', fitBoard);
-}
-
-function buildTopicList() {
-  const topics = scene.topics ?? [];
-  if (topics.length === 0) {
-    topicsButton.hidden = true;
-    topicPanel.hidden = true;
-    return false;
-  }
-  topicSearch.hidden = topics.length <= topicSearchThreshold;
-  topics.forEach((topic, index) => {
-    const item = document.createElement('li');
-    const button = document.createElement('button');
-    const number = document.createElement('span');
-    number.className = 'topic-number';
-    number.textContent = String(index + 1).padStart(2, '0');
-    button.type = 'button';
-    button.append(number, topic.label);
-    button.addEventListener('click', () => focusTopic(topic, button));
-    item.dataset.searchLabel = topic.label.toLowerCase();
-    item.append(button);
-    topicList.append(item);
-  });
-  return true;
-}
-
-function filterTopics() {
-  const query = topicSearchInput.value.trim().toLowerCase();
-  let visibleTopics = 0;
-  for (const item of topicList.children) {
-    item.hidden = !item.dataset.searchLabel.includes(query);
-    if (!item.hidden) visibleTopics += 1;
-  }
-  const noResults = visibleTopics === 0;
-  topicEmpty.textContent = noResults ? 'No topics found' : '';
-  if (noResults) topicEmpty.scrollIntoView({ block: 'nearest' });
-}
-
-function setTopicPanelOpen(open) {
-  topicPanel.hidden = !open;
-  topicsButton.setAttribute('aria-expanded', String(open));
-}
-
-function focusTopic(topic, button) {
-  setTopicPanelOpen(false);
-  topicsButton.focus();
-  const { bounds } = topic;
-  const available = availableViewport();
-  const horizontalContext = Math.max(120, bounds.width * 0.9);
-  const verticalContext = Math.max(120, bounds.height * 1.5);
-  const targetWidth = bounds.width + horizontalContext * 2;
-  const targetHeight = bounds.height + verticalContext * 2;
-  const scale = Math.min(16, Math.max(0.03, Math.min(available.width / targetWidth, available.height / targetHeight)));
-  const centerX = bounds.x + bounds.width / 2;
-  const centerY = bounds.y + bounds.height / 2;
-  animateView({
-    scale,
-    x: available.x + available.width / 2 - centerX * scale,
-    y: available.y + available.height / 2 - centerY * scale,
-  });
-  topicList.querySelector('[aria-current="true"]')?.removeAttribute('aria-current');
-  button.setAttribute('aria-current', 'true');
-}
-
-function availableViewport() {
-  const margin = 24;
-  return {
-    x: margin,
-    y: margin,
-    width: Math.max(1, viewport.clientWidth - margin * 2),
-    height: Math.max(1, viewport.clientHeight - margin * 2),
-  };
 }
 
 function onKeyDown(event) {
@@ -364,7 +270,6 @@ function onKeyDown(event) {
   }[event.key];
   if (!movement) return;
   event.preventDefault();
-  stopViewAnimation();
   view.x += movement[0];
   view.y += movement[1];
   applyView();
@@ -372,12 +277,10 @@ function onKeyDown(event) {
 
 function onWheel(event) {
   event.preventDefault();
-  stopViewAnimation();
   zoomAt(Math.exp(-event.deltaY * 0.0015), event.clientX, event.clientY);
 }
 
 function onPointerDown(event) {
-  stopViewAnimation();
   if (event.target.closest('.scene-link')) return;
   viewport.setPointerCapture(event.pointerId);
   pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -434,41 +337,11 @@ function zoomAt(factor, screenX, screenY) {
 }
 
 function fitBoard() {
-  stopViewAnimation();
-  topicList.querySelector('[aria-current="true"]')?.removeAttribute('aria-current');
   const margin = 24;
   view.scale = Math.max(0.03, Math.min((viewport.clientWidth - margin * 2) / scene.width, (viewport.clientHeight - margin * 2) / scene.height));
   view.x = (viewport.clientWidth - scene.width * view.scale) / 2;
   view.y = (viewport.clientHeight - scene.height * view.scale) / 2;
   applyView();
-}
-
-function animateView(target) {
-  stopViewAnimation();
-  if (reducedMotion.matches) {
-    Object.assign(view, target);
-    applyView();
-    return;
-  }
-  const start = { ...view };
-  const startedAt = performance.now();
-  const duration = 450;
-  const step = (now) => {
-    const progress = Math.min(1, (now - startedAt) / duration);
-    const eased = 1 - Math.pow(1 - progress, 3);
-    view.scale = start.scale + (target.scale - start.scale) * eased;
-    view.x = start.x + (target.x - start.x) * eased;
-    view.y = start.y + (target.y - start.y) * eased;
-    applyView();
-    viewAnimation = progress < 1 ? requestAnimationFrame(step) : null;
-  };
-  viewAnimation = requestAnimationFrame(step);
-}
-
-function stopViewAnimation() {
-  if (viewAnimation === null) return;
-  cancelAnimationFrame(viewAnimation);
-  viewAnimation = null;
 }
 
 function applyView() {

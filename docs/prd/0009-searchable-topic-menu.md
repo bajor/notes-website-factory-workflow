@@ -2,8 +2,9 @@
 type: PRD
 title: Searchable topic menu
 description: Requirements for compact topic discovery and navigation from a circular board control.
-status: Accepted
+status: Superseded
 supersedes: "0007"
+superseded_by: "0010"
 timestamp: 2026-08-30
 ---
 # Searchable Topic Menu

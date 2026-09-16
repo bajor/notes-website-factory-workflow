@@ -9,11 +9,9 @@ import Factory.Domain
 import Factory.Evaluation (CaptureTile (CaptureTile), EvaluationResult (evaluationPassed), bodyIsReady, calculateDifference, captureTiles, stitchTiles)
 import Factory.Geometry (boardMatrix, identityMatrix, multiplyMatrix)
 import Factory.Interpreter (ColorSpaceResource (SupportedColorSpace, UnsupportedColorSpace), Resources (Resources), VisualResource (RasterResource, VectorResource), interpretOperators)
-import Factory.Ocr (cropArguments)
 import Factory.Pipeline (outputCompanionPaths, validateOutputPath)
 import Factory.Pdf (classifyUrl, rejectDecode, rgbaImage)
 import Factory.Site (renderIndexTemplate, validateScene)
-import Factory.Topic (detectTopicFrames, sortTopicCandidates, topicFromOcr)
 import Factory.Vectorize (ImageDisposition (..), classifyImage, opaqueHighlighter, traceImage)
 import Pdf.Content (Op (..), Operator)
 import Pdf.Core (Object (Array, Name, Number))
@@ -37,7 +35,6 @@ tests =
     , interpreterTests
     , imageTests
     , vectorizationTests
-    , topicTests
     , linkTests
     , validationTests
     , siteTests
@@ -186,34 +183,6 @@ vectorizationTests =
           Just _ -> assertFailure "compact color block was classified as a highlighter stroke"
     ]
 
-topicTests :: TestTree
-topicTests =
-  testGroup
-    "topic navigation"
-    [ testCase "a thick chromatic frame becomes one topic target" $
-        length (detectTopicFrames syntheticTopicFrame) @?= 1
-    , testCase "topic frame detection is independent of hue" $
-        length (detectTopicFrames syntheticAlternateHueFrame) @?= 1
-    , testCase "an open chromatic frame is not a topic target" $
-        length (detectTopicFrames syntheticOpenFrame) @?= 0
-    , testCase "a thin chromatic frame is not a topic target" $
-        length (detectTopicFrames syntheticThinFrame) @?= 0
-    , testCase "an achromatic frame is not a topic target" $
-        length (detectTopicFrames syntheticAchromaticFrame) @?= 0
-    , testCase "a filled chromatic block is not a topic target" $
-        length (detectTopicFrames syntheticFilledBlock) @?= 0
-    , testCase "overlapping topic rows sort from left to right" $
-        sortTopicCandidates [topicCandidateAt 100 102 40 20, topicCandidateAt 50 200 40 20, topicCandidateAt 10 100 40 30]
-          @?= [topicCandidateAt 10 100 40 30, topicCandidateAt 100 102 40 20, topicCandidateAt 50 200 40 20]
-    , testCase "empty OCR receives a deterministic fallback label" $
-        case topicFromOcr 3 (topicCandidateAt 1 2 3 4) " \n " of
-          Right topic -> topicLabelText (topicLabel topic) @?= "Topic 3"
-          Left buildError -> assertFailure ("unexpected topic error: " <> show buildError)
-    , testCase "fractional crop edges include every touched pixel" $
-        cropArguments "source.pdf" "crop" (Rect (Coordinate 0.2) (Coordinate 0.2) (Coordinate 0.2) (Coordinate 0.2))
-          @?= ["-f", "1", "-l", "1", "-singlefile", "-png", "-r", "216", "-x", "0", "-y", "0", "-W", "2", "-H", "2", "source.pdf", "crop"]
-    ]
-
 linkTests :: TestTree
 linkTests =
   testGroup
@@ -277,14 +246,8 @@ validationTests =
         validateScene (sceneWith [testAsset] [ImageNode (assetId testAsset) (Matrix 2e306 0 0 2e306 0 0) 1 []])
           @?= Left (InvalidScene "a full-board raster image is not allowed")
     , testCase "mixed-scale image axes retain full-board detection" $
-        validateScene (Scene (Coordinate 1e306) (Coordinate 1e-100) [testAsset] [ImageNode (assetId testAsset) (Matrix 1e306 0 0 1e-100 0 0) 1 []] [])
+        validateScene (Scene (Coordinate 1e306) (Coordinate 1e-100) [testAsset] [ImageNode (assetId testAsset) (Matrix 1e306 0 0 1e-100 0 0) 1 []])
           @?= Left (InvalidScene "a full-board raster image is not allowed")
-    , testCase "topic bounds must remain inside the board" $
-        case mkTopicLabel "Topic" of
-          Left buildError -> assertFailure ("unexpected topic label error: " <> show buildError)
-          Right label ->
-            validateScene (Scene 100 100 [] [] [Topic label (Rect 90 90 20 20)])
-              @?= Left (InvalidScene "topic bounds must be positive and inside the board")
     ]
 
 evaluationTests :: TestTree
@@ -425,7 +388,7 @@ commandAt index commands = case drop index commands of
   [] -> Nothing
 
 sceneWith :: [Asset] -> [SceneNode] -> Scene 'Unvalidated
-sceneWith assets nodes = Scene (Coordinate 100) (Coordinate 100) assets nodes []
+sceneWith assets nodes = Scene (Coordinate 100) (Coordinate 100) assets nodes
 
 testAsset :: Asset
 testAsset = Asset (AssetId "asset-1") "assets/asset-1.png" 10 10
@@ -470,41 +433,3 @@ highlighterWithTransparentPixels = generateImage pixel 12 2
 
 translucentColorBlock :: Image PixelRGBA8
 translucentColorBlock = generateImage (\_ _ -> PixelRGBA8 255 192 0 89) 4 4
-
-syntheticTopicFrame :: Image PixelRGBA8
-syntheticTopicFrame = syntheticFrame 12 (PixelRGBA8 0 160 255 255)
-
-syntheticAlternateHueFrame :: Image PixelRGBA8
-syntheticAlternateHueFrame = syntheticFrame 12 (PixelRGBA8 240 40 140 255)
-
-syntheticThinFrame :: Image PixelRGBA8
-syntheticThinFrame = syntheticFrame 4 (PixelRGBA8 0 160 255 255)
-
-syntheticAchromaticFrame :: Image PixelRGBA8
-syntheticAchromaticFrame = syntheticFrame 12 (PixelRGBA8 120 120 120 255)
-
-syntheticFrame :: Int -> PixelRGBA8 -> Image PixelRGBA8
-syntheticFrame border color = generateImage pixel 160 120
-  where
-    pixel x y
-      | x >= 20 && x < 140 && y >= 20 && y < 100 && (x < 20 + border || x >= 140 - border || y < 20 + border || y >= 100 - border) = color
-      | otherwise = PixelRGBA8 255 255 255 255
-
-syntheticFilledBlock :: Image PixelRGBA8
-syntheticFilledBlock = generateImage pixel 160 120
-  where
-    pixel x y
-      | x >= 20 && x < 140 && y >= 20 && y < 100 = PixelRGBA8 0 160 255 255
-      | otherwise = PixelRGBA8 255 255 255 255
-
-syntheticOpenFrame :: Image PixelRGBA8
-syntheticOpenFrame = generateImage pixel 160 120
-  where
-    pixel x y
-      | x >= 20 && x < 140 && y >= 20 && y < 100 && (x < 32 || y < 32 || y >= 88) = PixelRGBA8 0 160 255 255
-      | otherwise = PixelRGBA8 255 255 255 255
-
-topicCandidateAt :: Double -> Double -> Double -> Double -> TopicCandidate
-topicCandidateAt x y width height = TopicCandidate bounds bounds
-  where
-    bounds = Rect (Coordinate x) (Coordinate y) (Coordinate width) (Coordinate height)

@@ -20,7 +20,6 @@ module Factory.Domain
   , DeviceColorSpace (..)
   , FillRule (..)
   , GameUrl (..)
-  , ImageSpace
   , LinkTarget (..)
   , Matrix (..)
   , PaintStyle (..)
@@ -32,20 +31,14 @@ module Factory.Domain
   , SceneNode (..)
   , SiteTitle
   , TextRun (..)
-  , Topic (..)
-  , TopicCandidate (..)
-  , TopicFrame (..)
-  , TopicLabel
   , Validation (..)
   , VectorPath (..)
   , VectorShape (..)
   , VideoId (..)
   , WebUrl (..)
   , mkSiteTitle
-  , mkTopicLabel
   , sceneNodes
   , siteTitleText
-  , topicLabelText
   ) where
 
 import Data.Aeson (ToJSON (toJSON), object, (.=))
@@ -59,7 +52,6 @@ data Validation = Unvalidated | Validated
 -- | Empty marker types used only by the compiler.
 data PdfSpace
 data BoardSpace
-data ImageSpace
 
 newtype Coordinate space = Coordinate {unCoordinate :: Double}
   deriving stock (Eq, Show)
@@ -164,38 +156,6 @@ mkSiteTitle rawTitle
 siteTitleText :: SiteTitle -> Text
 siteTitleText (SiteTitle title) = title
 
-newtype TopicLabel = TopicLabel Text
-  deriving stock (Eq, Show)
-
-mkTopicLabel :: Text -> Either BuildError TopicLabel
-mkTopicLabel rawLabel
-  | Text.null label = Left (InvalidTopic "topic label must not be empty")
-  | Text.any isControl label = Left (InvalidTopic "topic label must not contain control characters")
-  | otherwise = Right (TopicLabel label)
-  where
-    label = Text.unwords (Text.words rawLabel)
-
-topicLabelText :: TopicLabel -> Text
-topicLabelText (TopicLabel label) = label
-
-data TopicFrame = TopicFrame
-  { topicFrameOuter :: Rect ImageSpace
-  , topicFrameInner :: Rect ImageSpace
-  }
-  deriving stock (Eq, Show)
-
-data TopicCandidate = TopicCandidate
-  { topicCandidateBounds :: Rect BoardSpace
-  , topicCandidateCrop :: Rect BoardSpace
-  }
-  deriving stock (Eq, Show)
-
-data Topic = Topic
-  { topicLabel :: TopicLabel
-  , topicBounds :: Rect BoardSpace
-  }
-  deriving stock (Eq, Show)
-
 data LinkTarget = YouTube VideoId | Game GameUrl | External WebUrl
   deriving stock (Eq, Show)
 
@@ -232,7 +192,6 @@ data Scene (phase :: Validation) = Scene
   , sceneHeight :: Coordinate BoardSpace
   , sceneAssets :: [Asset]
   , sceneContent :: [SceneNode]
-  , sceneTopics :: [Topic]
   }
   deriving stock (Eq, Show)
 
@@ -249,8 +208,6 @@ data BuildError
   | InvalidScene Text
   | InvalidUrl Text
   | InvalidSiteTitle Text
-  | InvalidTopic Text
-  | OcrError Text
   | EvaluationError Text
   | IoError Text
   deriving stock (Eq, Show)
@@ -383,19 +340,11 @@ instance ToJSON Asset where
       , "height" .= assetHeight asset
       ]
 
-instance ToJSON Topic where
-  toJSON topic =
-    object
-      [ "label" .= topicLabelText (topicLabel topic)
-      , "bounds" .= topicBounds topic
-      ]
-
 instance ToJSON (Scene 'Validated) where
   toJSON scene =
     object
       [ "width" .= unCoordinate (sceneWidth scene)
       , "height" .= unCoordinate (sceneHeight scene)
       , "assets" .= sceneAssets scene
-      , "nodes" .= sceneContent scene
-      , "topics" .= sceneTopics scene
+       , "nodes" .= sceneContent scene
       ]

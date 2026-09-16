@@ -3,12 +3,10 @@
 
 -- | Deterministically classify and trace embedded Freeform artwork.
 module Factory.Vectorize
-  ( ContourPoint (..)
-  , ImageDisposition (..)
+  ( ImageDisposition (..)
   , classifyImage
   , opaqueHighlighter
   , traceImage
-  , traceSelectedContours
   ) where
 
 import Codec.Picture (Image, PixelRGBA8 (PixelRGBA8), generateImage, imageHeight, imageWidth, pixelAt)
@@ -143,11 +141,6 @@ traceImage image
 
 collectBoundaries :: Image PixelRGBA8 -> Map Style (Set Edge)
 collectBoundaries = collectBoundariesBy pixelStyle
-
-traceSelectedContours :: (PixelRGBA8 -> Bool) -> Image PixelRGBA8 -> [[ContourPoint]]
-traceSelectedContours selected = concatMap traceContours . Map.elems . collectBoundariesBy select
-  where
-    select pixel = if selected pixel then Just () else Nothing
 
 collectBoundariesBy :: Ord style => (PixelRGBA8 -> Maybe style) -> Image PixelRGBA8 -> Map style (Set Edge)
 collectBoundariesBy select image = rows 0 Map.empty

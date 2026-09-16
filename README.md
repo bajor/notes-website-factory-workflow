@@ -71,13 +71,13 @@ On success, the reusable workflow uploads:
 
 The reusable workflow does not deploy either artifact. If evaluation fails, it withholds `github-pages` and uploads available evaluation evidence when possible.
 
-The site includes `index.html`, `runtime.js`, `styles.css`, `scene.generated.js`, and `scene-summary.json`. An `assets/` directory is added only when the board contains raster assets. Detected highlighter-framed headings appear under `Topics`; the viewer keeps direct wheel, pinch, drag, and keyboard navigation while its visible controls are `Topics` and `Fit`. YouTube links activate privacy-enhanced embeds; supported Algo Arcade game links open in a new tab with an accessible gamepad affordance.
+The site includes `index.html`, `runtime.js`, `styles.css`, `scene.generated.js`, and `scene-summary.json`. An `assets/` directory is added only when the board contains raster assets. The viewer keeps direct wheel, pinch, drag, and keyboard navigation; its visible control is `Fit`. YouTube links activate privacy-enhanced embeds; supported Algo Arcade game links open in a new tab with an accessible gamepad affordance.
 
 The parser intentionally supports only the observed Apple Freeform subset: unrotated zero-origin pages; JPEG and 8-bit Flate images; affine image transforms; clipping and native paths; common device and named one/three-component ICC-based colors; stroke miter and dash state under non-singular similarity transforms; Freeform opacity resources; and HTTP or HTTPS URI annotations. Unsupported structures, including PDF text, fail explicitly.
 
 ## Local Use
 
-The CI-supported toolchain uses GHC 9.6.6, Cabal 3.10.3.0, `zlib1g-dev`, Poppler, English-language Tesseract, and a Chromium-compatible browser. Poppler and Tesseract build the topic index; Python 3 is needed only for the local server.
+The CI-supported toolchain uses GHC 9.6.6, Cabal 3.10.3.0, `zlib1g-dev`, Poppler, and a Chromium-compatible browser. Poppler supplies development evaluation references; Python 3 is needed only for the local server.
 
 Run the synthetic fixture:
 
@@ -103,5 +103,6 @@ make evaluate \
 
 ## Documentation
 
+- [Changelog](CHANGELOG.md): unreleased user-visible changes.
 - [Architecture](docs/architecture.md): workflow, data flow, module ownership, and safety boundaries.
 - [Apple Freeform PDF support profile](docs/pdf-investigation.md): supported parsing behavior, evidence, and limitations.

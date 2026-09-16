@@ -19,7 +19,6 @@ import Data.List (sort)
 import Data.Text (Text)
 import Factory.Domain
 import Factory.Evaluation (EvaluationResult (..), runVisualEvaluation)
-import Factory.Ocr (detectTopicCandidates, recognizeTopics)
 import Factory.Pdf (ParsedPdf (..), PdfSummary (..), parsePdf)
 import Factory.Site (validateScene, writeSite)
 import System.Directory
@@ -75,11 +74,7 @@ inspectRepository sourceRoot workDirectory = do
       removePathForcibly scratch
       case parsed of
         Left buildError -> pure (Left buildError)
-        Right result -> do
-          detected <- detectTopicCandidates pdf scratch (sceneWidth (parsedScene result)) (sceneHeight (parsedScene result))
-          pure $ do
-            candidates <- detected
-            Right (summaryText pdf (withTopicCount candidates (parsedSummary result)))
+        Right result -> pure (Right (summaryText pdf (parsedSummary result)))
 
 buildRepository :: FilePath -> FilePath -> FilePath -> SiteTitle -> IO (Either BuildError Text)
 buildRepository sourceRoot templateDirectory outputDirectory title = do
@@ -100,26 +95,14 @@ buildToStaging absoluteSource absoluteTemplates absoluteOutput stagingDirectory 
     parsed <- parsePdf pdf (stagingDirectory </> "assets")
     case parsed of
       Left buildError -> removePathForcibly stagingDirectory >> pure (Left buildError)
-      Right result -> do
-        detected <- detectTopicCandidates pdf (stagingDirectory </> ".topic-detection") (sceneWidth (parsedScene result)) (sceneHeight (parsedScene result))
-        case detected of
-          Left buildError -> removePathForcibly stagingDirectory >> pure (Left buildError)
-          Right candidates -> do
-            recognized <- recognizeTopics pdf (stagingDirectory </> ".topic-ocr") candidates
-            case recognized >>= validateScene . withTopics (parsedScene result) of
-              Left buildError -> removePathForcibly stagingDirectory >> pure (Left buildError)
-              Right scene -> do
-                writeSite absoluteTemplates stagingDirectory title scene
-                promoted <- promoteDirectory stagingDirectory absoluteOutput backupDirectory
-                pure $ case promoted of
-                  Left buildError -> Left buildError
-                  Right () -> Right ("Built JavaScript scene from " <> Text.pack (takeFileName pdf) <> "\n" <> summaryText pdf (withTopicCount candidates (parsedSummary result)))
-
-withTopics :: Scene 'Unvalidated -> [Topic] -> Scene 'Unvalidated
-withTopics scene topics = scene {sceneTopics = topics}
-
-withTopicCount :: [TopicCandidate] -> PdfSummary -> PdfSummary
-withTopicCount candidates summary = summary {summaryTopicCount = length candidates}
+      Right result -> case validateScene (parsedScene result) of
+        Left buildError -> removePathForcibly stagingDirectory >> pure (Left buildError)
+        Right scene -> do
+          writeSite absoluteTemplates stagingDirectory title scene
+          promoted <- promoteDirectory stagingDirectory absoluteOutput backupDirectory
+          pure $ case promoted of
+            Left buildError -> Left buildError
+            Right () -> Right ("Built JavaScript scene from " <> Text.pack (takeFileName pdf) <> "\n" <> summaryText pdf (parsedSummary result))
 
 evaluateRepository :: FilePath -> FilePath -> FilePath -> FilePath -> SiteTitle -> IO (Either BuildError Text)
 evaluateRepository sourceRoot templateDirectory outputDirectory reportDirectory title = do
@@ -262,7 +245,6 @@ summaryText pdf summary =
     , "Vector artworks: " <> numberText (summaryVectorCount summary)
     , "Raster images: " <> numberText (summaryRasterCount summary)
     , "Links: " <> numberText (summaryLinkCount summary)
-    , "Topics: " <> numberText (summaryTopicCount summary)
     ]
 
 renderError :: BuildError -> Text
@@ -276,8 +258,6 @@ renderError buildError = case buildError of
   InvalidScene message -> "invalid generated scene: " <> message
   InvalidUrl message -> "invalid PDF link: " <> message
   InvalidSiteTitle message -> "invalid site title: " <> message
-  InvalidTopic message -> "invalid topic: " <> message
-  OcrError message -> "topic OCR failed: " <> message
   EvaluationError message -> "evaluation failed: " <> message
   IoError message -> message
 

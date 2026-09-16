@@ -2,8 +2,9 @@
 type: BDR
 title: Searchable topic menu
 description: Observable topic detection, compact controls, conditional search, and navigation behavior.
-status: Accepted
+status: Superseded
 supersedes: "0010"
+superseded_by: "0013"
 timestamp: 2026-08-30
 ---
 # Searchable Topic Menu

@@ -13,26 +13,12 @@
       <p id="status" role="status">Building the scene...</p>
     </main>
     <nav id="controls" aria-label="Board controls">
-      <button type="button" data-action="topics" aria-label="Topics" title="Topics" aria-controls="topic-panel" aria-expanded="false">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M9 7h10M9 12h10M9 17h10M5 7h.01M5 12h.01M5 17h.01" />
-        </svg>
-      </button>
       <button type="button" data-action="fit" aria-label="Fit to screen" title="Fit to screen">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4" />
         </svg>
       </button>
     </nav>
-    <aside id="topic-panel" aria-label="Topics" hidden>
-      <p class="topic-panel-title">Topics</p>
-      <label class="topic-search" hidden>
-        <span>Search topics</span>
-        <input id="topic-search" type="search" autocomplete="off" placeholder="Search topics" />
-      </label>
-      <ol id="topic-list"></ol>
-      <p id="topic-empty" role="status"></p>
-    </aside>
     <script type="module" src="./runtime.js"></script>
   </body>
 </html>
