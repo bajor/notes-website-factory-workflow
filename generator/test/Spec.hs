@@ -179,6 +179,12 @@ vectorizationTests =
         case traceImage alphaRampImage of
           Right [shape] -> assertBool "trace contains the interpolated crossing" (Text.isInfixOf "0.625" (unVectorPath (vectorPath shape)))
           result -> assertFailure ("unexpected trace result: " <> show result)
+    , testCase "cutoff-alpha pixels retain a closed trace" $
+        case traceImage cutoffAlphaImage of
+          Right [shape] ->
+            let path = unVectorPath (vectorPath shape)
+             in assertBool "trace is nonempty and closed" (not (Text.null path) && Text.isSuffixOf "Z" path)
+          result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "adjacent styles share an interpolated boundary" $
         case traceImage adjacentStylesImage of
           Right [leftShape, rightShape] ->
@@ -454,6 +460,9 @@ alphaRampImage = generateImage pixel 2 2
   where
     pixel 0 _ = PixelRGBA8 0 0 0 0
     pixel _ _ = PixelRGBA8 0 0 0 128
+
+cutoffAlphaImage :: Image PixelRGBA8
+cutoffAlphaImage = generateImage (\_ _ -> PixelRGBA8 0 0 0 96) 1 1
 
 adjacentStylesImage :: Image PixelRGBA8
 adjacentStylesImage = generateImage pixel 2 2

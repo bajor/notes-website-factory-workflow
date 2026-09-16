@@ -32,6 +32,7 @@ Implement [BDR 0015](/bdr/0015-interpolated-traced-svg-contours.md) without chan
 - `make evaluate` passed for the synthetic fixture; the inspected 18 and 72 DPI report recorded zero mean error, a `1.0` pixels-within-tolerance ratio, and a `1.0` ink ratio.
 - The target consumer revision `152473810213e651424845f2e79e9f5e7d59c1e8` built with 575 vector artworks, one raster image, and a 24,529,169-byte scene.
 - Local target-consumer evaluation remains blocked by the pre-existing Chromium readiness failure before capture. The reusable workflow must provide the required 18 and 72 DPI evidence after this factory change merges.
+- The first post-merge Algorithms for Slow Learners run identified a traceable alpha-`96` style that interpolated to an empty vector path and failed scene validation. The follow-up branch adds a per-style pixel-boundary fallback and regression test before retrying deployment.
 
 # References
 
