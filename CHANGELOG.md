@@ -5,6 +5,7 @@
 ### Changed
 
 - Trace SVG artwork at interpolated source-alpha crossings with a tight fixed simplification bound, replacing low-polygon pixel-cell contours.
+- Retain source alpha `88` through `95` as a faint SVG layer within otherwise traceable artwork.
 
 ### Removed
 

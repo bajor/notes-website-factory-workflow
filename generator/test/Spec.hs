@@ -185,6 +185,16 @@ vectorizationTests =
             let path = unVectorPath (vectorPath shape)
              in assertBool "trace is nonempty and closed" (not (Text.null path) && Text.isSuffixOf "Z" path)
           result -> assertFailure ("unexpected trace result: " <> show result)
+    , testCase "mixed-opacity artwork retains a faint vector layer" $
+        case traceImage mixedOpacityImage of
+          Right [faintShape, opaqueShape] ->
+            map vectorOpacity [faintShape, opaqueShape] @?= [64 / 255, 1]
+          result -> assertFailure ("unexpected trace result: " <> show result)
+    , testCase "adjacent opacity layers share a boundary" $
+        case traceImage mixedOpacityImage of
+          Right [faintShape, opaqueShape] ->
+            assertBool "both opacity layers use the source boundary" (Text.isInfixOf "0.5" (unVectorPath (vectorPath faintShape)) && Text.isInfixOf "0.5" (unVectorPath (vectorPath opaqueShape)))
+          result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "adjacent styles share an interpolated boundary" $
         case traceImage adjacentStylesImage of
           Right [leftShape, rightShape] ->
@@ -463,6 +473,12 @@ alphaRampImage = generateImage pixel 2 2
 
 cutoffAlphaImage :: Image PixelRGBA8
 cutoffAlphaImage = generateImage (\_ _ -> PixelRGBA8 0 0 0 96) 1 1
+
+mixedOpacityImage :: Image PixelRGBA8
+mixedOpacityImage = generateImage pixel 2 2
+  where
+    pixel 0 _ = PixelRGBA8 0 0 0 88
+    pixel _ _ = PixelRGBA8 0 0 0 255
 
 adjacentStylesImage :: Image PixelRGBA8
 adjacentStylesImage = generateImage pixel 2 2

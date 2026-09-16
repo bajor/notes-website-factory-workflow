@@ -14,4 +14,5 @@
 - [BDR 0012: Searchable topic menu](/bdr/0012-searchable-topic-menu.md) - Superseded by BDR 0013.
 - [BDR 0013: Remove topic navigation](/bdr/0013-remove-topic-navigation.md) - Accepted. Expose only direct board navigation and Fit.
 - [BDR 0014: Smooth traced SVG artwork](/bdr/0014-smooth-traced-svg-artwork.md) - Superseded by BDR 0015.
-- [BDR 0015: Interpolated traced SVG contours](/bdr/0015-interpolated-traced-svg-contours.md) - Accepted. Trace contours at source alpha crossings.
+- [BDR 0015: Interpolated traced SVG contours](/bdr/0015-interpolated-traced-svg-contours.md) - Superseded by BDR 0016.
+- [BDR 0016: Alpha-layer traced SVG artwork](/bdr/0016-alpha-layer-traced-svg-artwork.md) - Accepted. Preserve faint mixed-resource ink in fixed-opacity SVG layers.

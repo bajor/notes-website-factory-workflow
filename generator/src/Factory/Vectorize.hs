@@ -58,6 +58,12 @@ maximumRasterTransparency = 0.01
 minimumTraceableAlpha :: Word8
 minimumTraceableAlpha = 96
 
+faintLayerOpacity :: Word8
+faintLayerOpacity = 64
+
+minimumVectorLayerAlpha :: Word8
+minimumVectorLayerAlpha = 88
+
 maximumVectorPoints :: Int
 maximumVectorPoints = 500000
 
@@ -193,7 +199,7 @@ collectBoundaries image = rows (-1) Map.empty
     styleAt x y = pixelAtMaybe x y >>= pixelStyle
     alphaAt style x y = case pixelAtMaybe x y of
       Just pixel@(PixelRGBA8 _ _ _ alpha)
-        | colorStyle pixel == style -> fromIntegral alpha
+        | pixelStyle pixel == Just style -> fromIntegral alpha
       _ -> 0
     pixelAtMaybe x y
       | x < 0 || y < 0 || x >= width || y >= height = Nothing
@@ -264,12 +270,14 @@ insertEdge :: Style -> Map Style (Set Edge) -> Edge -> Map Style (Set Edge)
 insertEdge style boundaries edge = Map.insertWith Set.union style (Set.singleton edge) boundaries
 
 pixelStyle :: PixelRGBA8 -> Maybe Style
-pixelStyle pixel@(PixelRGBA8 _ _ _ alpha)
-  | alpha < minimumTraceableAlpha = Nothing
-  | otherwise = Just (colorStyle pixel)
+pixelStyle (PixelRGBA8 red green blue alpha)
+  | alpha < minimumVectorLayerAlpha = Nothing
+  | otherwise = Just (Style (quantize 32 red) (quantize 32 green) (quantize 32 blue) (quantizeOpacity alpha))
 
-colorStyle :: PixelRGBA8 -> Style
-colorStyle (PixelRGBA8 red green blue _) = Style (quantize 32 red) (quantize 32 green) (quantize 32 blue) 255
+quantizeOpacity :: Word8 -> Word8
+quantizeOpacity alpha
+  | alpha < minimumTraceableAlpha = faintLayerOpacity
+  | otherwise = 255
 
 quantize :: Int -> Word8 -> Word8
 quantize step value = fromIntegral (min 255 (((fromIntegral value + step `div` 2) `div` step) * step) :: Int)
