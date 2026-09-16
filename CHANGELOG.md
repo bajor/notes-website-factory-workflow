@@ -4,7 +4,7 @@
 
 ### Changed
 
-- Smoothed pixel-grid staircases in traced SVG artwork so zoomed handwritten lines better match their source PDF.
+- Trace SVG artwork at interpolated source-alpha crossings with a tight fixed simplification bound, replacing low-polygon pixel-cell contours.
 
 ### Removed
 
