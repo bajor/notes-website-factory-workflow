@@ -11,3 +11,4 @@
 - [Issue 0009: Render highlighter strokes as opaque](/issues/0009-render-highlighters-opaque.md) - Done. Make positively identified Freeform highlighter strokes opaque.
 - [Issue 0010: Remove OCR topic navigation](/issues/0010-remove-ocr-topic-navigation.md) - Done. Delete topic recognition, metadata, and controls.
 - [Issue 0011: Smooth traced SVG artwork](/issues/0011-smooth-traced-svg-artwork.md) - Done. Smooth vector contour staircases and redeploy the target consumer.
+- [Issue 0012: Interpolate traced SVG contours](/issues/0012-interpolated-traced-svg-contours.md) - In Progress. Replace low-polygon pixel-cell tracing and redeploy the target consumer.

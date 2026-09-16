@@ -2,7 +2,8 @@
 type: BDR
 title: Smooth traced SVG artwork
 description: Simplify pixel-grid staircases in traceable Freeform artwork without changing image classification.
-status: Accepted
+status: Superseded
+superseded_by: "0015"
 timestamp: 2026-09-16
 ---
 # Smooth Traced SVG Artwork

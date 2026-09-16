@@ -11,8 +11,9 @@ module Factory.Vectorize
 
 import Codec.Picture (Image, PixelRGBA8 (PixelRGBA8), generateImage, imageHeight, imageWidth, pixelAt)
 import Data.ByteString (ByteString)
-import Data.List (foldl', maximumBy, minimumBy)
+import Data.List (foldl', maximumBy)
 import Data.Map.Strict (Map)
+import Data.Maybe (catMaybes)
 import Data.Ord (comparing)
 import Data.Set (Set)
 import Data.Text (Text)
@@ -30,7 +31,7 @@ data ImageDisposition = PreserveRaster | PreserveLowAlphaRaster | TraceAsVector
 data Style = Style Word8 Word8 Word8 Word8
   deriving stock (Eq, Ord, Show)
 
-data ContourPoint = ContourPoint Int Int
+data ContourPoint = ContourPoint Double Double
   deriving stock (Eq, Ord, Show)
 
 data PixelProfile = PixelProfile
@@ -61,7 +62,7 @@ maximumVectorPoints :: Int
 maximumVectorPoints = 500000
 
 simplificationToleranceSquared :: Double
-simplificationToleranceSquared = 4
+simplificationToleranceSquared = 0.25
 
 minimumHighlighterAspect :: Int
 minimumHighlighterAspect = 4
@@ -136,50 +137,106 @@ traceImage image
   | otherwise = Right shapes
   where
     boundaries = collectBoundaries image
-    shapes = map (shapeFromEdges (imageWidth image) (imageHeight image)) (Map.toAscList boundaries)
-    pointCount = sum (map (Text.count "L" . unVectorPath . vectorPath) shapes)
+    contours = map (fmap traceContours) (Map.toAscList boundaries)
+    shapes = map (shapeFromContours (imageWidth image) (imageHeight image)) contours
+    pointCount = sum [length contour | (_, styleContours) <- contours, contour <- styleContours]
 
 collectBoundaries :: Image PixelRGBA8 -> Map Style (Set Edge)
-collectBoundaries = collectBoundariesBy pixelStyle
-
-collectBoundariesBy :: Ord style => (PixelRGBA8 -> Maybe style) -> Image PixelRGBA8 -> Map style (Set Edge)
-collectBoundariesBy select image = rows 0 Map.empty
+collectBoundaries image = rows (-1) Map.empty
   where
     width = imageWidth image
     height = imageHeight image
     rows y boundaries
       | y == height = boundaries
-      | otherwise = rows (y + 1) (columns 0 y boundaries)
+      | otherwise = rows (y + 1) (columns (-1) y boundaries)
     columns x y boundaries
       | x == width = boundaries
-      | otherwise = columns (x + 1) y (addPixelEdges x y boundaries)
-    addPixelEdges x y boundaries = case select (pixelAt image x y) of
-      Nothing -> boundaries
-      Just style -> foldl' (insertEdge style) boundaries (boundaryEdges style x y)
-    boundaryEdges style x y =
-      [ Edge (ContourPoint x y) (ContourPoint (x + 1) y) | styleAt x (y - 1) /= Just style ]
-        <> [Edge (ContourPoint (x + 1) y) (ContourPoint (x + 1) (y + 1)) | styleAt (x + 1) y /= Just style]
-        <> [Edge (ContourPoint (x + 1) (y + 1)) (ContourPoint x (y + 1)) | styleAt x (y + 1) /= Just style]
-        <> [Edge (ContourPoint x (y + 1)) (ContourPoint x y) | styleAt (x - 1) y /= Just style]
-    styleAt x y
+      | otherwise = columns (x + 1) y (foldl' (addStyle x y) boundaries (cellStyles x y))
+    addStyle x y boundaries style = foldl' (insertEdge style) boundaries (cellEdges style x y)
+    cellStyles x y = Set.toAscList (Set.fromList (catMaybes [styleAt x y, styleAt (x + 1) y, styleAt (x + 1) (y + 1), styleAt x (y + 1)]))
+    cellEdges style x y = mapMaybeEdge (segmentsFor mask)
+      where
+        topLeft = alphaAt style x y
+        topRight = alphaAt style (x + 1) y
+        bottomRight = alphaAt style (x + 1) (y + 1)
+        bottomLeft = alphaAt style x (y + 1)
+        mask = boolBit topLeft 1 + boolBit topRight 2 + boolBit bottomRight 4 + boolBit bottomLeft 8
+        mapMaybeEdge = foldr add []
+        add (firstEdge, secondEdge) edges = case (edgePoint firstEdge, edgePoint secondEdge) of
+          (start, end)
+            | start == end -> edges
+            | otherwise -> canonicalEdge start end : edges
+        edgePoint edge = case edge of
+          0 -> interpolate x y (x + 1) y topLeft topRight
+          1 -> interpolate (x + 1) y (x + 1) (y + 1) topRight bottomRight
+          2 -> interpolate x (y + 1) (x + 1) (y + 1) bottomLeft bottomRight
+          _ -> interpolate x y x (y + 1) topLeft bottomLeft
+    styleAt x y = pixelAtMaybe x y >>= pixelStyle
+    alphaAt style x y = case pixelAtMaybe x y of
+      Just pixel@(PixelRGBA8 _ _ _ alpha)
+        | colorStyle pixel == style -> fromIntegral alpha
+      _ -> 0
+    pixelAtMaybe x y
       | x < 0 || y < 0 || x >= width || y >= height = Nothing
-      | otherwise = select (pixelAt image x y)
+      | otherwise = Just (pixelAt image x y)
+    samplePoint x y = ContourPoint (fromIntegral x + 0.5) (fromIntegral y + 0.5)
+    interpolate startX startY endX endY startAlpha endAlpha
+      | isStyleBoundary = midpoint
+      | otherwise = clampPoint (ContourPoint (firstX + factor * (secondX - firstX)) (firstY + factor * (secondY - firstY)))
+      where
+        ContourPoint firstX firstY = samplePoint startX startY
+        ContourPoint secondX secondY = samplePoint endX endY
+        factor = (traceAlpha - startAlpha) / (endAlpha - startAlpha)
+        midpoint = ContourPoint ((firstX + secondX) / 2) ((firstY + secondY) / 2)
+        isStyleBoundary = case (styleAt startX startY, styleAt endX endY) of
+          (Just firstStyle, Just secondStyle) -> firstStyle /= secondStyle
+          _ -> False
+    clampPoint (ContourPoint x y) = ContourPoint (max 0 (min (fromIntegral width) x)) (max 0 (min (fromIntegral height) y))
+    traceAlpha = fromIntegral minimumTraceableAlpha
+    boolBit alpha bit = if alpha >= traceAlpha then bit else 0
 
-insertEdge :: Ord style => style -> Map style (Set Edge) -> Edge -> Map style (Set Edge)
+segmentsFor :: Int -> [(Int, Int)]
+segmentsFor mask = case mask of
+  0 -> []
+  1 -> [(3, 0)]
+  2 -> [(0, 1)]
+  3 -> [(3, 1)]
+  4 -> [(1, 2)]
+  5 -> [(3, 0), (1, 2)]
+  6 -> [(0, 2)]
+  7 -> [(3, 2)]
+  8 -> [(2, 3)]
+  9 -> [(0, 2)]
+  10 -> [(0, 1), (2, 3)]
+  11 -> [(1, 2)]
+  12 -> [(1, 3)]
+  13 -> [(0, 1)]
+  14 -> [(3, 0)]
+  _ -> []
+
+canonicalEdge :: GridPoint -> GridPoint -> Edge
+canonicalEdge start end
+  | start <= end = Edge start end
+  | otherwise = Edge end start
+
+insertEdge :: Style -> Map Style (Set Edge) -> Edge -> Map Style (Set Edge)
 insertEdge style boundaries edge = Map.insertWith Set.union style (Set.singleton edge) boundaries
 
 pixelStyle :: PixelRGBA8 -> Maybe Style
-pixelStyle (PixelRGBA8 red green blue alpha)
+pixelStyle pixel@(PixelRGBA8 _ _ _ alpha)
   | alpha < minimumTraceableAlpha = Nothing
-  | otherwise = Just (Style (quantize 32 red) (quantize 32 green) (quantize 32 blue) 255)
+  | otherwise = Just (colorStyle pixel)
+
+colorStyle :: PixelRGBA8 -> Style
+colorStyle (PixelRGBA8 red green blue _) = Style (quantize 32 red) (quantize 32 green) (quantize 32 blue) 255
 
 quantize :: Int -> Word8 -> Word8
 quantize step value = fromIntegral (min 255 (((fromIntegral value + step `div` 2) `div` step) * step) :: Int)
 
-shapeFromEdges :: Int -> Int -> (Style, Set Edge) -> VectorShape
-shapeFromEdges width height (style, edges) =
+shapeFromContours :: Int -> Int -> (Style, [[GridPoint]]) -> VectorShape
+shapeFromContours width height (style, contours) =
   VectorShape
-    { vectorPath = VectorPath (pathText width height (traceContours edges))
+    { vectorPath = VectorPath (pathText width height contours)
     , vectorColor = styleColor style
     , vectorOpacity = styleOpacity style
     }
@@ -190,7 +247,7 @@ traceContours = consumeContours . edgeMap
 edgeMap :: Set Edge -> Map GridPoint (Set GridPoint)
 edgeMap = Set.foldl' add Map.empty
   where
-    add adjacency (Edge start end) = Map.insertWith Set.union start (Set.singleton end) adjacency
+    add adjacency (Edge start end) = Map.insertWith Set.union end (Set.singleton start) (Map.insertWith Set.union start (Set.singleton end) adjacency)
 
 consumeContours :: Map GridPoint (Set GridPoint) -> [[GridPoint]]
 consumeContours adjacency
@@ -198,45 +255,27 @@ consumeContours adjacency
   | otherwise =
       let (start, destinations) = Map.findMin adjacency
           next = Set.findMin destinations
-          remaining = removeTransition start next adjacency
-          (contour, rest) = walkContour start start next [start] remaining
+          remaining = removeConnection start next adjacency
+          (contour, rest) = walkContour start next [start] remaining
        in simplifyClosed contour : consumeContours rest
 
-walkContour :: GridPoint -> GridPoint -> GridPoint -> [GridPoint] -> Map GridPoint (Set GridPoint) -> ([GridPoint], Map GridPoint (Set GridPoint))
-walkContour origin previous current reversed remaining
+walkContour :: GridPoint -> GridPoint -> [GridPoint] -> Map GridPoint (Set GridPoint) -> ([GridPoint], Map GridPoint (Set GridPoint))
+walkContour origin current reversed remaining
   | current == origin = (reverse reversed, remaining)
-  | otherwise = case nextPoint previous current remaining of
+  | otherwise = case Map.lookup current remaining of
       Nothing -> (reverse (current : reversed), remaining)
-      Just next -> walkContour origin current next (current : reversed) (removeTransition current next remaining)
+      Just destinations ->
+        let next = Set.findMin destinations
+         in walkContour origin next (current : reversed) (removeConnection current next remaining)
 
-nextPoint :: GridPoint -> GridPoint -> Map GridPoint (Set GridPoint) -> Maybe GridPoint
-nextPoint previous current adjacency = case Map.lookup current adjacency of
-  Nothing -> Nothing
-  Just destinations -> Just (minimumBy (comparing turnRank) (Set.toList destinations))
+removeConnection :: GridPoint -> GridPoint -> Map GridPoint (Set GridPoint) -> Map GridPoint (Set GridPoint)
+removeConnection start end = remove end start . remove start end
   where
-    incoming = direction previous current
-    turnRank next = turnPreference ((direction current next - incoming) `mod` 4)
-
-removeTransition :: GridPoint -> GridPoint -> Map GridPoint (Set GridPoint) -> Map GridPoint (Set GridPoint)
-removeTransition start end = Map.update remove start
-  where
-    remove destinations =
-      let remaining = Set.delete end destinations
-       in if Set.null remaining then Nothing else Just remaining
-
-direction :: GridPoint -> GridPoint -> Int
-direction (ContourPoint x1 y1) (ContourPoint x2 y2)
-  | x2 > x1 = 0
-  | y2 > y1 = 1
-  | x2 < x1 = 2
-  | otherwise = 3
-
-turnPreference :: Int -> Int
-turnPreference turn = case turn of
-  1 -> 0
-  0 -> 1
-  3 -> 2
-  _ -> 3
+    remove point destination = Map.update removeDestination point
+      where
+        removeDestination destinations =
+          let remaining = Set.delete destination destinations
+           in if Set.null remaining then Nothing else Just remaining
 
 simplifyClosed :: [GridPoint] -> [GridPoint]
 simplifyClosed points
@@ -272,21 +311,21 @@ removeCollinear points =
 
 collinear :: GridPoint -> GridPoint -> GridPoint -> Bool
 collinear (ContourPoint ax ay) (ContourPoint bx by) (ContourPoint cx cy) =
-  (bx - ax) * (cy - by) == (by - ay) * (cx - bx)
+  abs ((bx - ax) * (cy - by) - (by - ay) * (cx - bx)) <= 1.0e-9
 
 distanceSquared :: GridPoint -> GridPoint -> Double
 distanceSquared (ContourPoint ax ay) (ContourPoint bx by) =
-  fromIntegral ((bx - ax) ^ (2 :: Int) + (by - ay) ^ (2 :: Int))
+  (bx - ax) ^ (2 :: Int) + (by - ay) ^ (2 :: Int)
 
 lineDistanceSquared :: GridPoint -> GridPoint -> GridPoint -> Double
 lineDistanceSquared (ContourPoint ax ay) (ContourPoint bx by) (ContourPoint px py)
   | lengthSquared == 0 = distanceSquared (ContourPoint ax ay) (ContourPoint px py)
   | otherwise = cross * cross / lengthSquared
   where
-    dx = fromIntegral (bx - ax)
-    dy = fromIntegral (by - ay)
-    offsetX = fromIntegral (px - ax)
-    offsetY = fromIntegral (py - ay)
+    dx = bx - ax
+    dy = by - ay
+    offsetX = px - ax
+    offsetY = py - ay
     cross = dy * offsetX - dx * offsetY
     lengthSquared = dx * dx + dy * dy
 
@@ -295,7 +334,7 @@ pathText width height = Text.intercalate " " . map contourText
   where
     contourText [] = ""
     contourText (point : rest) = "M" <> pointText point <> foldMap (("L" <>) . pointText) rest <> "Z"
-    pointText (ContourPoint x y) = decimal (fromIntegral x / fromIntegral width) <> "," <> decimal (fromIntegral y / fromIntegral height)
+    pointText (ContourPoint x y) = decimal (x / fromIntegral width) <> "," <> decimal (y / fromIntegral height)
 
 decimal :: Double -> Text
 decimal value = trimDecimal (Text.pack (showFFloat (Just 6) value ""))

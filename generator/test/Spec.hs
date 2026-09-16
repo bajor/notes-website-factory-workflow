@@ -16,7 +16,7 @@ import Factory.Vectorize (ImageDisposition (..), classifyImage, opaqueHighlighte
 import Pdf.Content (Op (..), Operator)
 import Pdf.Core (Object (Array, Name, Number))
 import Test.Tasty (TestTree, defaultMain, testGroup)
-import Test.Tasty.HUnit (assertFailure, testCase, (@?=))
+import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
 import qualified Data.ByteString as ByteString
 import qualified Data.Aeson.KeyMap as KeyMap
 import qualified Data.Map.Strict as Map
@@ -163,16 +163,29 @@ vectorizationTests =
         classifyImage (Just (ByteString.pack (replicate 20 0 <> replicate 980 255))) @?= Right TraceAsVector
     , testCase "a filled rectangle produces one closed vector path" $
         case traceImage solidVectorImage of
-          Right [shape] -> unVectorPath (vectorPath shape) @?= "M0,0L1,0L1,1L0,1Z"
+          Right [shape] ->
+            let path = unVectorPath (vectorPath shape)
+             in assertBool "trace has one closed contour" (Text.count "M" path == 1 && Text.isSuffixOf "Z" path)
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "transparent holes remain separate closed contours" $
         case traceImage vectorImageWithHole of
           Right [shape] -> Text.count "M" (unVectorPath (vectorPath shape)) @?= 2
           result -> assertFailure ("unexpected trace result: " <> show result)
-    , testCase "diagonal staircases omit pixel-grid turns" $
+    , testCase "diagonal staircases contain fractional contour coordinates" $
         case traceImage diagonalStaircaseImage of
-          Right [shape] -> unVectorPath (vectorPath shape) @?= "M0,0L1,0L1,0.833333Z"
+          Right [shape] -> assertBool "trace is not constrained to source-pixel corners" (Text.isInfixOf "0.853922" (unVectorPath (vectorPath shape)))
           result -> assertFailure ("unexpected trace result: " <> show result)
+    , testCase "alpha ramps interpolate contour crossings" $
+        case traceImage alphaRampImage of
+          Right [shape] -> assertBool "trace contains the interpolated crossing" (Text.isInfixOf "0.625" (unVectorPath (vectorPath shape)))
+          result -> assertFailure ("unexpected trace result: " <> show result)
+    , testCase "adjacent styles share an interpolated boundary" $
+        case traceImage adjacentStylesImage of
+          Right [leftShape, rightShape] ->
+            assertBool ("both styles use the source boundary: " <> show [vectorPath leftShape, vectorPath rightShape]) (Text.isInfixOf "0.5" (unVectorPath (vectorPath leftShape)) && Text.isInfixOf "0.5" (unVectorPath (vectorPath rightShape)))
+          result -> assertFailure ("unexpected trace result: " <> show result)
+    , testCase "contour tracing is deterministic" $
+        traceImage diagonalStaircaseImage @?= traceImage diagonalStaircaseImage
     , testCase "nonzero highlighter pixels become opaque without changing RGB" $
         case opaqueHighlighter translucentHighlighter of
           Just image -> pixelAt image 0 0 @?= PixelRGBA8 255 192 0 255
@@ -435,6 +448,18 @@ diagonalStaircaseImage = generateImage pixel 6 6
     offset y
       | even y = 0
       | otherwise = 1
+
+alphaRampImage :: Image PixelRGBA8
+alphaRampImage = generateImage pixel 2 2
+  where
+    pixel 0 _ = PixelRGBA8 0 0 0 0
+    pixel _ _ = PixelRGBA8 0 0 0 128
+
+adjacentStylesImage :: Image PixelRGBA8
+adjacentStylesImage = generateImage pixel 2 2
+  where
+    pixel 0 _ = PixelRGBA8 0 0 0 255
+    pixel _ _ = PixelRGBA8 255 0 0 255
 
 translucentHighlighter :: Image PixelRGBA8
 translucentHighlighter = generateImage (\_ _ -> PixelRGBA8 255 192 0 89) 12 2
