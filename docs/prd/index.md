@@ -8,4 +8,5 @@
 - [PRD 0006: OCR topic navigation](/prd/0006-ocr-topic-navigation.md) - Superseded by PRD 0007.
 - [PRD 0007: Composited OCR topic navigation](/prd/0007-composited-ocr-topic-navigation.md) - Superseded by PRD 0009.
 - [PRD 0008: Opaque Freeform highlighters](/prd/0008-opaque-freeform-highlighters.md) - Accepted. Preserve low-alpha content except positively identified highlighter strokes.
-- [PRD 0009: Searchable topic menu](/prd/0009-searchable-topic-menu.md) - Accepted. Expose compact circular controls and conditional topic search.
+- [PRD 0009: Searchable topic menu](/prd/0009-searchable-topic-menu.md) - Superseded by PRD 0010.
+- [PRD 0010: Remove topic recognition and navigation](/prd/0010-remove-topic-recognition-and-navigation.md) - Accepted. Emit only source-derived scene data and Fit controls.

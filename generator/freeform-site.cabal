@@ -9,11 +9,9 @@ library
     , Factory.Geometry
     , Factory.Interpreter
     , Factory.Evaluation
-    , Factory.Ocr
     , Factory.Pdf
     , Factory.Pipeline
     , Factory.Site
-    , Factory.Topic
     , Factory.Vectorize
   hs-source-dirs:   src
   default-language: GHC2021

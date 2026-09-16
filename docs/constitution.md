@@ -61,3 +61,9 @@ Accepted on 2026-08-29.
 The topic-index build may create a temporary low-resolution full-page render because a visible Freeform frame can span multiple image XObjects. The render exists only in removable build space, supplies geometry rather than OCR text, and never enters the deployed product. OCR remains restricted to bounded interiors of accepted frames.
 
 The generated board may render a positively identified Freeform highlighter stroke at full opacity. This exception changes opacity only: it cannot add text, geometry, or pixels outside the source stroke. Other low-alpha content retains source alpha under the existing fidelity contract.
+
+## Amendment 4: Remove Topic Recognition
+
+Accepted on 2026-09-16.
+
+The factory must not detect highlighter frames, render topic crops, run optical character recognition, emit topic metadata, or provide topic navigation controls. Amendment 2 is superseded. The topic-recognition portion of Amendment 3 is superseded; its opaque-highlighter rendering exception remains in force.

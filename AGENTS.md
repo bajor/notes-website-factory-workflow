@@ -22,14 +22,14 @@ Every concept has one canonical home and remains reachable from `docs/index.md`.
 
 - Keep production notes PDFs in consumer repositories. The factory contains only synthetic test fixtures.
 - Keep production parsing in Haskell with `pdf-toolbox` and project-owned interpretation and validation.
-- Preserve source content without inventing text or geometry. Use optical character recognition only for bounded build-time topic labels permitted by Constitution Amendments 2 and 3; never turn unsupported PDF text into DOM text.
+- Preserve source content without inventing text or geometry. Never turn unsupported PDF text into DOM text.
 - Keep the generated product independent of the source PDF, full-page PDF rasters, browser PDF parsers, Canvas fallbacks, and a backend.
 - Fail when observed content cannot be represented safely; do not silently omit it or weaken validation.
 - Keep consumer input, the factory checkout, site output, and evaluation evidence in separate roots. Templates remain factory-owned and protected from removable paths.
 - Never allow a removable output, staging, backup, scratch, or report path to overlap a protected root or another independently owned output root.
 - Keep behavior independent of consumer filenames, dimensions, resource names, scene counts, repository names, and complete content URLs.
 - Do not add Rust, TypeScript, Node, Vite, Sharp, OpenSeadragon, or a backend as a project requirement.
-- Keep Chromium in development and CI evaluation only. Under Constitution Amendments 2 and 3, Poppler may create removable build-time topic detection and OCR images, and English Tesseract may label only bounded accepted topic interiors.
+- Keep Chromium and Poppler in development and CI evaluation only.
 
 ## Architecture and Compatibility
 

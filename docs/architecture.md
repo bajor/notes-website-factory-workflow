@@ -1,8 +1,8 @@
 ---
 type: Architecture View
 title: Notes website factory architecture
-description: Repository ownership, reusable workflow, topic recognition, module boundaries, and evaluation flow.
-timestamp: 2026-08-29
+description: Repository ownership, reusable workflow, module boundaries, and evaluation flow.
+timestamp: 2026-09-16
 ---
 # Architecture
 
@@ -19,7 +19,6 @@ flowchart LR
   subgraph Factory[Notes Website Factory]
     Workflow[Reusable build workflow]
     Generator[Haskell generator]
-    TopicTools[Poppler detection and crops, Tesseract]
     Viewer[Shared viewer templates]
     Oracle[Visual evaluator]
   end
@@ -31,7 +30,6 @@ flowchart LR
   Caller --> Workflow
   PDF --> Workflow
   Workflow --> Generator
-  Generator --> TopicTools
   Viewer --> Generator
   Generator --> Oracle
   Oracle --> PagesArtifact
@@ -50,7 +48,6 @@ sequenceDiagram
   participant S as source/
   participant F as factory/
   participant G as Haskell generator
-  participant O as Topic recognition tools
   participant E as Evaluator
   participant A as Artifact store
 
@@ -60,8 +57,6 @@ sequenceDiagram
   W->>G: Test factory fixture
   W->>G: Inspect source only
   G->>S: Discover exactly one PDF
-  G->>O: Render detection page and bounded OCR crops
-  O-->>G: Best-effort English labels
   G->>F: Read shared templates
   G-->>W: Validated static site
   W->>E: Compare Poppler and Chromium at 18 and 72 DPI
@@ -93,11 +88,6 @@ flowchart TD
   Vector[Trace normalized SVG contours]
   Reject[Typed unsupported-image failure]
   Links[Extract URI annotations]
-  DetectRender[Temporary 36 DPI page render]
-  Frame{Thick chromatic frame}
-  Crop[Render bounded interior crop]
-  OCR[English Tesseract label]
-  Topic[Board-space topic metadata]
   Target{Classify link target}
   YouTube[YouTube activation button]
   Game[Algo Arcade anchor and badge]
@@ -108,11 +98,9 @@ flowchart TD
   Valid[Scene Validated]
   Emit[Static JavaScript scene and assets]
   Affine[Affine image presentation matrix]
-  Browser[Inline SVG, DOM overlays, Topics, and Fit]
+  Browser[Inline SVG, DOM overlays, and Fit]
 
   Input --> Parse --> Mask
-  Input --> DetectRender --> Frame
-  Frame -->|yes| Crop --> OCR --> Topic
   Parse --> Links --> Target
   Mask -->|absent| Raster
   Mask -->|empty| Reject
@@ -135,11 +123,10 @@ flowchart TD
   YouTube --> Raw
   Game --> Raw
   External --> Raw
-  Topic --> Raw
   Raw --> Validate --> Valid --> Emit --> Affine --> Browser
 ```
 
-The deployed product receives only the validated scene and its extracted assets. Source PDFs, topic-detection renders, OCR crops, and evaluation images stay in build space. The [support profile](/pdf-investigation.md) owns parsing compatibility and classification details; accepted BDRs own observable output behavior.
+The deployed product receives only the validated scene and its extracted assets. Source PDFs and evaluation images stay in build space. The [support profile](/pdf-investigation.md) owns parsing compatibility and classification details; accepted BDRs own observable output behavior.
 
 ## Module Boundaries
 
@@ -149,10 +136,8 @@ The deployed product receives only the validated scene and its extracted assets.
 | `Factory.Geometry` | PDF-to-board transformations and affine matrix operations | None |
 | `Factory.Interpreter` | PDF operator state machine and scene-node emission | None |
 | `Factory.Vectorize` | Image classification, highlighter opacity profiling, quantization, contour tracing, and simplification | None |
-| `Factory.Topic` | Composited highlighter-frame detection, visual-row ordering, and label normalization | None |
-| `Factory.Ocr` | Poppler detection render, bounded crops, board placement, and local Tesseract execution | Processes and temporary image output |
 | `Factory.Pdf` | PDF objects, streams, resources, annotations, structural URL classification, and raster materialization | File input and asset output |
-| `Factory.Site` | Scene validation, metadata rendering, and deterministic site emission | Template and site output |
+| `Factory.Site` | Scene validation and deterministic site emission | Template and site output |
 | `Factory.Evaluation` | Poppler/Chromium execution, bounded capture planning, image stitching, metrics, and reports | Processes and report output |
 | `Factory.Pipeline` | CLI dispatch, discovery, protected paths, staging, and promotion | Filesystem orchestration |
 | `site/runtime.js` | Shared affine rendering, evaluation-tile offsets, typed link activation, game affordances, and desktop/mobile interaction behavior | Browser DOM |
@@ -164,9 +149,9 @@ The deployed product receives only the validated scene and its extracted assets.
 2. The parser and `validateScene` reject unsupported source structures, invalid scene values, and full-board raster output.
 3. Removable paths are canonicalized, reject symlink targets and unresolved symlink parents, and cannot overlap protected inputs or independently owned outputs.
 4. Output is staged in `DIST.building`, promoted through `DIST.previous`, and checked for product files, relative references, no PDF, and no Canvas fallback.
-5. OCR, topic detection, and evaluation inputs remain removable build artifacts; process failures abort the build.
+5. Evaluation inputs remain removable build artifacts; process failures abort the build.
 6. The Pages artifact is uploaded only after parsing, validation, browser readiness, and both visual scales pass.
-7. Link classification, highlighter opacity, topic detection, and tiled evaluation policies are specified by the linked ADRs and BDRs below.
+7. Link classification, highlighter opacity, and tiled evaluation policies are specified by the linked ADRs and BDRs below.
 
 ## Determinism and Compatibility
 
@@ -174,8 +159,7 @@ The deployed product receives only the validated scene and its extracted assets.
 - The dependency solver, GHC, Cabal, and third-party actions are pinned.
 - Poppler and Chrome revisions can change antialiasing, so fixed tolerances replace exact pixel equality.
 - Browser evaluation tiles depend only on output dimensions and fixed `8192`-pixel horizontal and `4096`-pixel vertical boundaries; tile files are removed after stitching.
-- Topic order depends only on board coordinates; OCR output cannot reorder navigation targets.
 - `site-title`, `github-pages`, `pdf-site-evaluation`, and generated filenames are public contracts.
 - A moving `main` reference intentionally updates consumers on their next run; factory CI exercises the actual reusable workflow before merge.
 
-[ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [ADR 0004](/adr/0004-linked-game-cards.md) owns measured mask and game-link trust boundaries. [ADR 0006](/adr/0006-tile-oversized-browser-evaluations.md) owns bounded evaluation capture. [ADR 0008](/adr/0008-composited-topic-detection.md) owns topic recognition, and [ADR 0009](/adr/0009-opaque-highlighter-strokes.md) owns the low-alpha highlighter exception. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md), [BDR 0006](/bdr/0006-expanded-freeform-graphics-output.md), [BDR 0007](/bdr/0007-tiled-visual-evaluation.md), [BDR 0008](/bdr/0008-fixed-light-viewer.md), [BDR 0011](/bdr/0011-opaque-highlighter-output.md), and [BDR 0012](/bdr/0012-searchable-topic-menu.md) own current observable behavior.
+[ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [ADR 0004](/adr/0004-linked-game-cards.md) owns measured mask and game-link trust boundaries. [ADR 0006](/adr/0006-tile-oversized-browser-evaluations.md) owns bounded evaluation capture, and [ADR 0009](/adr/0009-opaque-highlighter-strokes.md) owns the low-alpha highlighter exception. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md), [BDR 0006](/bdr/0006-expanded-freeform-graphics-output.md), [BDR 0007](/bdr/0007-tiled-visual-evaluation.md), [BDR 0008](/bdr/0008-fixed-light-viewer.md), [BDR 0011](/bdr/0011-opaque-highlighter-output.md), and [BDR 0013](/bdr/0013-remove-topic-navigation.md) own current observable behavior.

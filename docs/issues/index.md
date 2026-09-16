@@ -9,3 +9,4 @@
 - [Issue 0007: Preserve fixed light viewer](/issues/0007-preserve-fixed-light-viewer.md) - Done. Prevent browser theme adaptation from changing generated colors.
 - [Issue 0008: Add OCR topic navigation](/issues/0008-add-ocr-topic-navigation.md) - Done. Label highlighter-framed headings and navigate to their positions.
 - [Issue 0009: Render highlighter strokes as opaque](/issues/0009-render-highlighters-opaque.md) - Done. Make positively identified Freeform highlighter strokes opaque.
+- [Issue 0010: Remove OCR topic navigation](/issues/0010-remove-ocr-topic-navigation.md) - Done. Delete topic recognition, metadata, and controls.
