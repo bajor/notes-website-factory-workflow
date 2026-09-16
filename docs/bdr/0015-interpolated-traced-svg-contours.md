@@ -14,7 +14,7 @@ BDR 0014 increased contour simplification to four square source pixels. The targ
 
 ## Description
 
-The factory continues to classify every traceable artwork resource as vector artwork. It derives each style contour from the source alpha `96` crossing between adjacent samples, emitting fractional source-image coordinates instead of pixel-cell boundaries. It then simplifies contours with a fixed squared perpendicular error limit of `0.25` source pixels. Contours remain linear SVG paths, preserve closed regions and holes, and fail before emission when their structural point count exceeds the existing fixed limit. Classification, RGB quantization, low-alpha raster behavior, source order, clipping, and affine presentation remain unchanged.
+The factory continues to classify every traceable artwork resource as vector artwork. It derives each style contour from the source alpha `96` crossing between adjacent samples, emitting fractional source-image coordinates instead of pixel-cell boundaries. When that crossing collapses every contour of a style at the discrete alpha cutoff, it uses the existing pixel-cell boundary for that style so supported visible source pixels cannot become an empty SVG path. It then simplifies contours with a fixed squared perpendicular error limit of `0.25` source pixels. Contours remain linear SVG paths, preserve closed regions and holes, and fail before emission when their structural point count exceeds the existing fixed limit. Classification, RGB quantization, low-alpha raster behavior, source order, clipping, and affine presentation remain unchanged.
 
 ## Scenarios
 
@@ -24,6 +24,7 @@ The factory continues to classify every traceable artwork resource as vector art
 4. Given a rectangular traceable region or a traceable region containing a transparent hole, when the factory traces it, then closed contour topology remains valid.
 5. Given traceable artwork exceeding the fixed structural point limit, when the factory traces it, then the build fails explicitly before emitting a Pages artifact.
 6. Given the target consumer PDF, when the factory builds and evaluates it, then traceable artwork remains SVG and the fixed 18 and 72 DPI visual gates pass without threshold changes.
+7. Given a traceable pixel exactly at alpha `96`, when interpolation would collapse its contour, then the factory emits a non-empty closed pixel-cell trace.
 
 ## Test Design
 
@@ -35,6 +36,7 @@ The factory continues to classify every traceable artwork resource as vector art
 | 4 | Existing rectangle and hole `traceImage` unit tests | Closed outer regions and holes remain separate contours. |
 | 5 | Pure `traceImage` unit test | A fixed complexity limit rejects before serialization. |
 | 6 | Factory and consumer visual evaluation | `make evaluate`, report inspection, and reusable workflow evidence pass both fixed scales. |
+| 7 | Pure `traceImage` unit test | A one-pixel alpha-`96` image serializes a non-empty closed path. |
 
 # References
 
