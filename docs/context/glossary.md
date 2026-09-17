@@ -16,7 +16,7 @@ A grayscale PDF image that supplies per-pixel opacity for another image resource
 
 ## Traceable Alpha Sample
 
-A soft-mask sample at or above alpha `96` that the current vector tracer can retain. Nonzero samples below the cutoff remain raster when a mask contains no traceable sample; a positively identified highlighter stroke has a separate opacity policy.
+A soft-mask sample at or above alpha `96` that selects vector tracing for its complete image resource. Within a selected resource, samples from `88` through `95` are retained in a fixed-opacity SVG layer. A resource with no traceable sample remains raster; a positively identified highlighter stroke has a separate opacity policy.
 
 ## Vector Artwork
 

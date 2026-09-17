@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="280" viewBox="0 0 960 280" role="img" aria-labelledby="title desc">
+  <title id="title">Alpha-layer traced SVG artwork</title>
+  <desc id="desc">Before, the vector tracer discarded faint alpha and emitted opaque SVG. After, it emits a fixed faint SVG layer while retaining fully low-alpha images as raster.</desc>
+  <style>text{font-family:Arial,sans-serif;fill:#1f2937}.box{fill:#f8fafc;stroke:#475569;stroke-width:2}.accent{fill:#dbeafe;stroke:#2563eb;stroke-width:2}.arrow{stroke:#475569;stroke-width:3;marker-end:url(#arrow)}</style>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#475569"/></marker></defs>
+  <text x="40" y="35" font-size="24" font-weight="bold">Before: opaque-only vector trace</text>
+  <rect class="box" x="40" y="60" width="220" height="85" rx="8"/><text x="62" y="96" font-size="17">Mixed-alpha image</text><text x="62" y="120" font-size="14">faint pixels dropped</text>
+  <line class="arrow" x1="260" y1="102" x2="340" y2="102"/>
+  <rect class="box" x="340" y="60" width="220" height="85" rx="8"/><text x="362" y="96" font-size="17">Opaque SVG fills</text><text x="362" y="120" font-size="14">broken pale strokes</text>
+  <text x="40" y="190" font-size="24" font-weight="bold">After: fixed-opacity SVG layers</text>
+  <rect class="accent" x="40" y="210" width="220" height="50" rx="8"/><text x="62" y="242" font-size="17">Traceable mixed-alpha image</text>
+  <line class="arrow" x1="260" y1="235" x2="340" y2="235"/>
+  <rect class="accent" x="340" y="210" width="220" height="50" rx="8"/><text x="362" y="242" font-size="17">faint SVG opacity layer</text>
+  <line class="arrow" x1="560" y1="235" x2="640" y2="235"/>
+  <rect class="accent" x="640" y="210" width="260" height="50" rx="8"/><text x="662" y="242" font-size="17">continuous faint vector ink</text>
+</svg>

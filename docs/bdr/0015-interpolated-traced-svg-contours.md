@@ -2,8 +2,9 @@
 type: BDR
 title: Interpolated traced SVG contours
 description: Trace vector-artwork contours at source alpha crossings instead of source-pixel cell boundaries.
-status: Accepted
+status: Superseded
 supersedes: "0014"
+superseded_by: "0016"
 timestamp: 2026-09-16
 ---
 # Interpolated Traced SVG Contours
