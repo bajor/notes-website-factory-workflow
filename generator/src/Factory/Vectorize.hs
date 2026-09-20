@@ -143,28 +143,9 @@ traceImage image
   | otherwise = Right shapes
   where
     boundaries = collectBoundaries image
-    contours = map traceStyle (Set.toAscList (collectStyles image))
+    contours = [(style, traceContours edges) | (style, edges) <- Map.toAscList boundaries]
     shapes = map (shapeFromContours (imageWidth image) (imageHeight image)) contours
     pointCount = sum [length contour | (_, styleContours) <- contours, contour <- styleContours]
-    traceStyle style
-      | validContours interpolated = (style, interpolated)
-      | otherwise = (style, traceContours (pixelBoundaries image style))
-      where
-        edges = Map.findWithDefault Set.empty style boundaries
-        interpolated = traceContours edges
-    validContours traced = not (null traced) && all (not . null) traced
-
-collectStyles :: Image PixelRGBA8 -> Set Style
-collectStyles image = rows 0 Set.empty
-  where
-    width = imageWidth image
-    height = imageHeight image
-    rows y styles
-      | y == height = styles
-      | otherwise = rows (y + 1) (columns 0 y styles)
-    columns x y styles
-      | x == width = styles
-      | otherwise = columns (x + 1) y (maybe styles (`Set.insert` styles) (pixelStyle (pixelAt image x y)))
 
 collectBoundaries :: Image PixelRGBA8 -> Map Style (Set Edge)
 collectBoundaries image = rows (-1) Map.empty
@@ -185,6 +166,8 @@ collectBoundaries image = rows (-1) Map.empty
         topRight = alphaAt style (x + 1) y
         bottomRight = alphaAt style (x + 1) (y + 1)
         bottomLeft = alphaAt style x (y + 1)
+        traceAlpha = contourAlpha style
+        boolBit alpha bit = if alpha >= traceAlpha then bit else 0
         mask = boolBit topLeft 1 + boolBit topRight 2 + boolBit bottomRight 4 + boolBit bottomLeft 8
         mapMaybeEdge = foldr add []
         add (firstEdge, secondEdge) edges = case (edgePoint firstEdge, edgePoint secondEdge) of
@@ -192,55 +175,48 @@ collectBoundaries image = rows (-1) Map.empty
             | start == end -> edges
             | otherwise -> canonicalEdge start end : edges
         edgePoint edge = case edge of
-          0 -> interpolate x y (x + 1) y topLeft topRight
-          1 -> interpolate (x + 1) y (x + 1) (y + 1) topRight bottomRight
-          2 -> interpolate x (y + 1) (x + 1) (y + 1) bottomLeft bottomRight
-          _ -> interpolate x y x (y + 1) topLeft bottomLeft
+          0 -> interpolate traceAlpha x y (x + 1) y topLeft topRight
+          1 -> interpolate traceAlpha (x + 1) y (x + 1) (y + 1) topRight bottomRight
+          2 -> interpolate traceAlpha x (y + 1) (x + 1) (y + 1) bottomLeft bottomRight
+          _ -> interpolate traceAlpha x y x (y + 1) topLeft bottomLeft
     styleAt x y = pixelAtMaybe x y >>= pixelStyle
     alphaAt style x y = case pixelAtMaybe x y of
       Just pixel@(PixelRGBA8 _ _ _ alpha)
-        | pixelStyle pixel == Just style -> fromIntegral alpha
+        | quantizedStyle pixel == style || (alpha < minimumVectorLayerAlpha && sameColor style (quantizedStyle pixel)) -> fromIntegral alpha
       _ -> 0
     pixelAtMaybe x y
       | x < 0 || y < 0 || x >= width || y >= height = Nothing
       | otherwise = Just (pixelAt image x y)
     samplePoint x y = ContourPoint (fromIntegral x + 0.5) (fromIntegral y + 0.5)
-    interpolate startX startY endX endY startAlpha endAlpha
-      | isStyleBoundary = midpoint
-      | otherwise = clampPoint (ContourPoint (firstX + factor * (secondX - firstX)) (firstY + factor * (secondY - firstY)))
+    interpolate traceAlpha startX startY endX endY startAlpha endAlpha
+      | Just (firstStyle, secondStyle) <- styleBoundary, sameColor firstStyle secondStyle =
+          crossing ((contourAlpha firstStyle `max` contourAlpha secondStyle) - sourceAlpha startX startY) (sourceAlpha endX endY - sourceAlpha startX startY)
+      | Just _ <- styleBoundary = midpoint
+      | otherwise = crossing (traceAlpha - startAlpha) (endAlpha - startAlpha)
       where
         ContourPoint firstX firstY = samplePoint startX startY
         ContourPoint secondX secondY = samplePoint endX endY
-        factor = (traceAlpha - startAlpha) / (endAlpha - startAlpha)
+        crossing numerator denominator =
+          let factor = numerator / denominator
+           in clampPoint (ContourPoint (firstX + factor * (secondX - firstX)) (firstY + factor * (secondY - firstY)))
         midpoint = ContourPoint ((firstX + secondX) / 2) ((firstY + secondY) / 2)
-        isStyleBoundary = case (styleAt startX startY, styleAt endX endY) of
-          (Just firstStyle, Just secondStyle) -> firstStyle /= secondStyle
-          _ -> False
+        styleBoundary = case (styleAt startX startY, styleAt endX endY) of
+          (Just firstStyle, Just secondStyle) | firstStyle /= secondStyle -> Just (firstStyle, secondStyle)
+          _ -> Nothing
+    sourceAlpha x y = case pixelAtMaybe x y of
+      Just (PixelRGBA8 _ _ _ alpha) -> fromIntegral alpha
+      Nothing -> 0
     clampPoint (ContourPoint x y) = ContourPoint (max 0 (min (fromIntegral width) x)) (max 0 (min (fromIntegral height) y))
-    traceAlpha = fromIntegral minimumTraceableAlpha
-    boolBit alpha bit = if alpha >= traceAlpha then bit else 0
 
-pixelBoundaries :: Image PixelRGBA8 -> Style -> Set Edge
-pixelBoundaries image style = rows 0 Set.empty
+contourAlpha :: Style -> Double
+contourAlpha (Style _ _ _ opacity) = fromIntegral lowerAlpha - halfAlphaSample
   where
-    width = imageWidth image
-    height = imageHeight image
-    rows y edges
-      | y == height = edges
-      | otherwise = rows (y + 1) (columns 0 y edges)
-    columns x y edges
-      | x == width = edges
-      | styleAt x y /= Just style = columns (x + 1) y edges
-      | otherwise = columns (x + 1) y (foldl' (flip Set.insert) edges (boundaryEdges x y))
-    boundaryEdges x y =
-      [ canonicalEdge (gridPoint x y) (gridPoint (x + 1) y) | styleAt x (y - 1) /= Just style ]
-        <> [canonicalEdge (gridPoint (x + 1) y) (gridPoint (x + 1) (y + 1)) | styleAt (x + 1) y /= Just style]
-        <> [canonicalEdge (gridPoint (x + 1) (y + 1)) (gridPoint x (y + 1)) | styleAt x (y + 1) /= Just style]
-        <> [canonicalEdge (gridPoint x (y + 1)) (gridPoint x y) | styleAt (x - 1) y /= Just style]
-    styleAt x y
-      | x < 0 || y < 0 || x >= width || y >= height = Nothing
-      | otherwise = pixelStyle (pixelAt image x y)
-    gridPoint x y = ContourPoint (fromIntegral x) (fromIntegral y)
+    lowerAlpha = if opacity == faintLayerOpacity then minimumVectorLayerAlpha else minimumTraceableAlpha
+    halfAlphaSample = 0.5
+
+sameColor :: Style -> Style -> Bool
+sameColor (Style red green blue _) (Style otherRed otherGreen otherBlue _) =
+  (red, green, blue) == (otherRed, otherGreen, otherBlue)
 
 segmentsFor :: Int -> [(Int, Int)]
 segmentsFor mask = case mask of
@@ -270,9 +246,13 @@ insertEdge :: Style -> Map Style (Set Edge) -> Edge -> Map Style (Set Edge)
 insertEdge style boundaries edge = Map.insertWith Set.union style (Set.singleton edge) boundaries
 
 pixelStyle :: PixelRGBA8 -> Maybe Style
-pixelStyle (PixelRGBA8 red green blue alpha)
+pixelStyle pixel@(PixelRGBA8 _ _ _ alpha)
   | alpha < minimumVectorLayerAlpha = Nothing
-  | otherwise = Just (Style (quantize 32 red) (quantize 32 green) (quantize 32 blue) (quantizeOpacity alpha))
+  | otherwise = Just (quantizedStyle pixel)
+
+quantizedStyle :: PixelRGBA8 -> Style
+quantizedStyle (PixelRGBA8 red green blue alpha) =
+  Style (quantize 32 red) (quantize 32 green) (quantize 32 blue) (quantizeOpacity alpha)
 
 quantizeOpacity :: Word8 -> Word8
 quantizeOpacity alpha
@@ -329,13 +309,19 @@ removeConnection start end = remove end start . remove start end
 simplifyClosed :: [GridPoint] -> [GridPoint]
 simplifyClosed points
   | length cleaned <= 4 = cleaned
-  | otherwise = init (simplifyOpen firstHalf) <> init (simplifyOpen secondHalf)
+  | signedArea simplified * signedArea cleaned > 0 = simplified
+  | otherwise = cleaned
   where
     cleaned = removeCollinear points
+    simplified = init (simplifyOpen firstHalf) <> init (simplifyOpen secondHalf)
     anchor = head cleaned
     farthestIndex = fst (maximumBy (comparing (distanceSquared anchor . snd)) (zip [0 ..] cleaned))
     firstHalf = take (farthestIndex + 1) cleaned
     secondHalf = drop farthestIndex cleaned <> [anchor]
+
+signedArea :: [GridPoint] -> Double
+signedArea [] = 0
+signedArea points = sum [x * nextY - nextX * y | (ContourPoint x y, ContourPoint nextX nextY) <- zip points (tail points <> [head points])]
 
 simplifyOpen :: [GridPoint] -> [GridPoint]
 simplifyOpen points

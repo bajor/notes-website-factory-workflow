@@ -173,11 +173,11 @@ vectorizationTests =
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "diagonal staircases contain fractional contour coordinates" $
         case traceImage diagonalStaircaseImage of
-          Right [shape] -> assertBool "trace is not constrained to source-pixel corners" (Text.isInfixOf "0.853922" (unVectorPath (vectorPath shape)))
+          Right [shape] -> assertBool "trace is not constrained to source-pixel corners" (Text.isInfixOf "0.854248" (unVectorPath (vectorPath shape)))
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "alpha ramps interpolate contour crossings" $
         case traceImage alphaRampImage of
-          Right [shape] -> assertBool "trace contains the interpolated crossing" (Text.isInfixOf "0.625" (unVectorPath (vectorPath shape)))
+          Right [shape] -> assertBool "trace contains the interpolated crossing" (Text.isInfixOf "0.623047" (unVectorPath (vectorPath shape)))
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "cutoff-alpha pixels retain a closed trace" $
         case traceImage cutoffAlphaImage of
@@ -190,10 +190,31 @@ vectorizationTests =
           Right [faintShape, opaqueShape] ->
             map vectorOpacity [faintShape, opaqueShape] @?= [64 / 255, 1]
           result -> assertFailure ("unexpected trace result: " <> show result)
+    , testCase "faint strokes interpolate their outer boundary" $
+        case traceImage faintStrokeImage of
+          Right (shape : _) -> assertBool "faint crossing is fractional" (Text.isInfixOf "0.189716" (unVectorPath (vectorPath shape)))
+          result -> assertFailure ("unexpected trace result: " <> show result)
+    , testCase "isolated cutoff components survive beside opaque artwork" $
+        case traceImage (cutoffComponentsImage 1) of
+          Right [shape] -> Text.count "M" (unVectorPath (vectorPath shape)) @?= 2
+          result -> assertFailure ("unexpected trace result: " <> show result)
+    , testCase "cutoff pairs do not degrade separate opaque contours" $
+        case (traceImage (cutoffComponentsImage 0), traceImage (cutoffComponentsImage 2)) of
+          (Right [opaqueShape], Right [mixedShape]) ->
+            assertBool "opaque contour is unchanged" (unVectorPath (vectorPath opaqueShape) `Text.isSuffixOf` unVectorPath (vectorPath mixedShape))
+          result -> assertFailure ("unexpected trace results: " <> show result)
+    , testCase "simplification retains a thin cutoff stroke's area" $
+        case traceImage (generateImage (\_ _ -> PixelRGBA8 0 0 0 96) 3 1) of
+          Right [shape] -> assertBool "stroke was not collapsed to a line" (Text.count "L" (unVectorPath (vectorPath shape)) >= 3)
+          result -> assertFailure ("unexpected trace result: " <> show result)
+    , testCase "sub-threshold edge samples contribute to interpolation" $
+        case traceImage subThresholdRampImage of
+          Right [shape] -> assertBool "crossing uses source edge alpha" (Text.isInfixOf "0.411458" (unVectorPath (vectorPath shape)))
+          result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "adjacent opacity layers share a boundary" $
         case traceImage mixedOpacityImage of
           Right [faintShape, opaqueShape] ->
-            assertBool "both opacity layers use the source boundary" (Text.isInfixOf "0.5" (unVectorPath (vectorPath faintShape)) && Text.isInfixOf "0.5" (unVectorPath (vectorPath opaqueShape)))
+            assertBool "both opacity layers use the source boundary" (Text.isInfixOf "0.272455" (unVectorPath (vectorPath faintShape)) && Text.isInfixOf "0.272455" (unVectorPath (vectorPath opaqueShape)))
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "adjacent styles share an interpolated boundary" $
         case traceImage adjacentStylesImage of
@@ -473,6 +494,27 @@ alphaRampImage = generateImage pixel 2 2
 
 cutoffAlphaImage :: Image PixelRGBA8
 cutoffAlphaImage = generateImage (\_ _ -> PixelRGBA8 0 0 0 96) 1 1
+
+faintStrokeImage :: Image PixelRGBA8
+faintStrokeImage = generateImage pixel 3 1
+  where
+    pixel 0 _ = PixelRGBA8 0 0 0 94
+    pixel 2 _ = PixelRGBA8 0 0 0 255
+    pixel _ _ = PixelRGBA8 0 0 0 0
+
+cutoffComponentsImage :: Int -> Image PixelRGBA8
+cutoffComponentsImage count = generateImage pixel 8 4
+  where
+    pixel x y
+      | y == 1 && x >= 1 && x <= count = PixelRGBA8 0 0 0 96
+      | x >= 5 && x <= 6 && y >= 1 && y <= 2 = PixelRGBA8 0 0 0 255
+      | otherwise = PixelRGBA8 0 0 0 0
+
+subThresholdRampImage :: Image PixelRGBA8
+subThresholdRampImage = generateImage pixel 2 2
+  where
+    pixel 0 _ = PixelRGBA8 0 0 0 80
+    pixel _ _ = PixelRGBA8 0 0 0 128
 
 mixedOpacityImage :: Image PixelRGBA8
 mixedOpacityImage = generateImage pixel 2 2
