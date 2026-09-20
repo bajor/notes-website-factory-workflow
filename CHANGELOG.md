@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Prevent faint or cutoff-alpha fragments from degrading neighboring handwriting into pixel-grid outlines or disappearing during tracing.
+
 ### Changed
 
 - Trace SVG artwork at interpolated source-alpha crossings with a tight fixed simplification bound, replacing low-polygon pixel-cell contours.

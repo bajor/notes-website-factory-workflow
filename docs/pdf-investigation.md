@@ -2,7 +2,7 @@
 type: Reference
 title: Apple Freeform PDF support profile
 description: Historical evidence, supported parsing, classification policy, and explicit limitations.
-timestamp: 2026-09-16
+timestamp: 2026-09-20
 ---
 # Apple Freeform PDF Support Profile
 
@@ -46,7 +46,7 @@ Classification uses the soft-mask samples before tracing, in this order:
 - traceable masks with a non-opaque sample fraction below `0.02` but above `0.01`: fail as ambiguous;
 - traceable masks with a non-opaque sample fraction of at least `0.02`: trace as vector.
 
-Tracing quantizes RGB channels in steps of 32 and uses a faint SVG layer for source alpha `88` through `95`. For a traceable image, this retains visible faint pixels as SVG artwork while the `96` cutoff continues to select wholly low-alpha resources for raster preservation. The tracer derives boundaries from linearly interpolated source-alpha crossings at `96`, combines matching color-and-opacity boundaries into even-odd paths, normalizes coordinates to the source image, and simplifies contours with a `0.25` square-pixel tolerance. If interpolation collapses every contour for a style at the discrete alpha cutoff, tracing falls back to that style's pixel-cell boundary rather than emitting invalid empty SVG geometry. Its nonzero pixels become opaque only when the accepted elongated, chromatic highlighter profile applies; other low-alpha rasters retain source alpha. The tracer preserves closed contours and holes with deterministic source-order-independent edge joining. The browser restores each image XObject's PDF transform when it renders the SVG path data.
+Tracing quantizes RGB channels in steps of 32 and uses a faint SVG layer for source alpha `88` through `95`. The image-classification cutoff remains `96`. Contours cross between integer alpha samples at `87.5` for the faint layer and `95.5` for the opaque layer, avoiding collapsed geometry at exact cutoff samples. Same-color sub-threshold edge samples contribute to interpolation, and adjacent opacity layers share their source-alpha crossing. Matching color-and-opacity boundaries become normalized even-odd paths. The fixed `0.25` square-pixel simplification bound applies independently to each contour; a simplification that destroys its signed area retains the unsimplified contour. There is no style-wide pixel-grid fallback. Low-alpha raster pixels become opaque only when the accepted highlighter profile applies. The browser restores each image XObject's PDF transform when it renders the SVG path data. [BDR 0017](/bdr/0017-preserve-local-traced-detail.md) owns local-detail behavior.
 
 ## Selected Library
 

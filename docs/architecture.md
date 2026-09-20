@@ -2,7 +2,7 @@
 type: Architecture View
 title: Notes website factory architecture
 description: Repository ownership, reusable workflow, module boundaries, and evaluation flow.
-timestamp: 2026-09-16
+timestamp: 2026-09-20
 ---
 # Architecture
 
@@ -85,7 +85,7 @@ flowchart TD
   Highlighter{Highlighter profile}
   Raster[Preserve source-alpha raster]
   OpaqueMarker[Opaque highlighter raster]
-  Vector[Trace normalized SVG contours]
+  Vector[Trace layer-aware SVG contours<br/>Simplify each contour independently]
   Reject[Typed unsupported-image failure]
   Links[Extract URI annotations]
   Target{Classify link target}
@@ -127,6 +127,8 @@ flowchart TD
 ```
 
 The deployed product receives only the validated scene and its extracted assets. Source PDFs and evaluation images stay in build space. The [support profile](/pdf-investigation.md) owns parsing compatibility and classification details; accepted BDRs own observable output behavior.
+
+[BDR 0017](/bdr/0017-preserve-local-traced-detail.md) owns layer-aware contour interpolation and local simplification; `Factory.Vectorize` retains that responsibility without changing the scene schema or browser renderer.
 
 ## Module Boundaries
 
