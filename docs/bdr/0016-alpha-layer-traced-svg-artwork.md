@@ -2,7 +2,8 @@
 type: BDR
 title: Alpha-layer traced SVG artwork
 description: Preserve faint content inside traceable artwork resources through fixed-opacity SVG layers.
-status: Accepted
+status: Superseded
+superseded_by: "0017"
 supersedes: "0015"
 timestamp: 2026-09-16
 ---
