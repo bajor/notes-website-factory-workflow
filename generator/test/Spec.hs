@@ -205,7 +205,11 @@ vectorizationTests =
           result -> assertFailure ("unexpected trace results: " <> show result)
     , testCase "simplification retains a thin cutoff stroke's area" $
         case traceImage (generateImage (\_ _ -> PixelRGBA8 0 0 0 96) 3 1) of
-          Right [shape] -> assertBool "stroke was not collapsed to a line" (Text.count "L" (unVectorPath (vectorPath shape)) >= 3)
+          Right [shape] -> assertBool "stroke was not collapsed to a line" (traceArea shape > 0)
+          result -> assertFailure ("unexpected trace result: " <> show result)
+    , testCase "wide-image serialization retains cutoff component area" $
+        case traceImage (generateImage (\x _ -> PixelRGBA8 0 0 0 (if x == 10000 then 96 else 0)) 20000 1) of
+          Right [shape] -> assertBool "normalized rounding did not collapse the contour" (traceArea shape > 0)
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "sub-threshold edge samples contribute to interpolation" $
         case traceImage subThresholdRampImage of
@@ -469,6 +473,15 @@ blankImage = generateImage (\_ _ -> PixelRGB8 255 255 255) 100 100
 
 solidVectorImage :: Image PixelRGBA8
 solidVectorImage = generateImage (\_ _ -> PixelRGBA8 0 0 0 255) 2 2
+
+traceArea :: VectorShape -> Double
+traceArea shape = abs (sum [x * nextY - nextX * y | ((x, y), (nextX, nextY)) <- zip points (drop 1 points <> take 1 points)])
+  where
+    coordinates = Text.words (Text.map separate (unVectorPath (vectorPath shape)))
+    points = pairs (map (read . Text.unpack) coordinates)
+    separate character = if character `elem` ("MLZ," :: String) then ' ' else character
+    pairs (x : y : rest) = (x, y) : pairs rest
+    pairs _ = []
 
 vectorImageWithHole :: Image PixelRGBA8
 vectorImageWithHole = generateImage pixel 3 3

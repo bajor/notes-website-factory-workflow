@@ -369,10 +369,14 @@ pathText width height = Text.intercalate " " . map contourText
   where
     contourText [] = ""
     contourText (point : rest) = "M" <> pointText point <> foldMap (("L" <>) . pointText) rest <> "Z"
-    pointText (ContourPoint x y) = decimal (x / fromIntegral width) <> "," <> decimal (y / fromIntegral height)
+    pointText (ContourPoint x y) = decimal width (x / fromIntegral width) <> "," <> decimal height (y / fromIntegral height)
 
-decimal :: Double -> Text
-decimal value = trimDecimal (Text.pack (showFFloat (Just 6) value ""))
+decimal :: Int -> Double -> Text
+decimal extent value = trimDecimal (Text.pack (showFFloat (Just precision) value ""))
+  where
+    precision = max minimumCoordinateDecimals (length (show extent) + subpixelDecimalPlaces)
+    minimumCoordinateDecimals = 6
+    subpixelDecimalPlaces = 2
 
 trimDecimal :: Text -> Text
 trimDecimal value =
