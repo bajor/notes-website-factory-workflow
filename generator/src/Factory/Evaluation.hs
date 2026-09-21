@@ -13,6 +13,7 @@ module Factory.Evaluation
   , calculateDifference
   , captureTiles
   , runVisualEvaluation
+  , selectDetailRegions
   , stitchTiles
   ) where
 
@@ -30,6 +31,9 @@ import Control.Monad (forM_)
 import Control.Monad.Primitive (PrimMonad, PrimState)
 import Control.Monad.ST (runST)
 import Data.Aeson (encode, object, (.=))
+import Data.List (sortOn)
+import Data.Maybe (mapMaybe)
+import Data.Ord (Down (Down))
 import Data.Text (Text)
 import Data.Word (Word8)
 import Factory.Domain (BuildError (EvaluationError))
@@ -64,8 +68,22 @@ data EvaluationResult = EvaluationResult
 
 data ScaleEvaluation = ScaleEvaluation Int EvaluationResult
 
+data DetailEvaluation = DetailEvaluation Int Int CaptureTile EvaluationResult
+
 referenceDpis :: [Int]
-referenceDpis = [18, 72]
+referenceDpis = [detailSelectionDpi, 72]
+
+detailSelectionDpi :: Int
+detailSelectionDpi = 18
+
+detailDpis :: [Int]
+detailDpis = [288, 576]
+
+detailRegionSide :: Int
+detailRegionSide = 32
+
+maximumDetailRegions :: Int
+maximumDetailRegions = 3
 
 maximumMeanError :: Double
 maximumMeanError = 0.02
@@ -99,8 +117,10 @@ runVisualEvaluation pdfPath siteDirectory reportDirectory = do
     Left buildError -> pure (Left buildError)
     Right scales -> do
       let result = aggregateResults scales
-      writeReports reportDirectory scales result
-      pure (Right result)
+      details <- evaluateDetails pdfPath absoluteSite reportDirectory
+      case details of
+        Left buildError -> pure (Left buildError)
+        Right crops -> writeReports reportDirectory scales crops result >> pure (Right result)
   where
     evaluateScales _ [] = pure (Right [])
     evaluateScales absoluteSite (dpi : remaining) = do
@@ -110,13 +130,17 @@ runVisualEvaluation pdfPath siteDirectory reportDirectory = do
         Right scale -> fmap (fmap (scale :)) (evaluateScales absoluteSite remaining)
 
 evaluateScale :: FilePath -> FilePath -> FilePath -> Int -> IO (Either BuildError ScaleEvaluation)
-evaluateScale pdfPath absoluteSite reportDirectory dpi = do
-  let suffix = "-" <> show dpi
-      referenceStem = reportDirectory </> "reference" <> suffix
+evaluateScale pdfPath absoluteSite reportDirectory dpi =
+  fmap (fmap (ScaleEvaluation dpi . snd)) (renderComparison pdfPath absoluteSite reportDirectory ("-" <> show dpi) dpi Nothing)
+
+renderComparison :: FilePath -> FilePath -> FilePath -> String -> Int -> Maybe CaptureTile -> IO (Either BuildError (CaptureTile, EvaluationResult))
+renderComparison pdfPath absoluteSite reportDirectory suffix dpi region = do
+  let referenceStem = reportDirectory </> "reference" <> suffix
       referencePath = referenceStem <> ".png"
       generatedPath = reportDirectory </> "generated" <> suffix <> ".png"
       differencePath = reportDirectory </> "difference" <> suffix <> ".png"
-  referenceExit <- runTool "pdftoppm" ["-singlefile", "-png", "-r", show dpi, pdfPath, referenceStem]
+      cropArguments (CaptureTile x y width height) = ["-x", show x, "-y", show y, "-W", show width, "-H", show height]
+  referenceExit <- runTool "pdftoppm" (["-singlefile", "-png", "-r", show dpi] <> maybe [] cropArguments region <> [pdfPath, referenceStem])
   case referenceExit of
     Left message -> pure (Left (EvaluationError message))
     Right () -> do
@@ -124,13 +148,61 @@ evaluateScale pdfPath absoluteSite reportDirectory dpi = do
       case referenceDimensions of
         Left message -> pure (Left (EvaluationError message))
         Right (width, height) -> do
-          browserExit <- runBrowser absoluteSite generatedPath dpi width height
+          let capture = maybe (CaptureTile 0 0 width height) (\tile -> tile {captureWidth = width, captureHeight = height}) region
+          browserExit <- runBrowser absoluteSite generatedPath dpi capture
           case browserExit of
             Left message -> pure (Left (EvaluationError message))
-            Right () -> fmap (ScaleEvaluation dpi) <$> compareImagePaths referencePath generatedPath differencePath
+            Right () -> fmap (capture,) <$> compareImagePaths referencePath generatedPath differencePath
 
-runBrowser :: FilePath -> FilePath -> Int -> Int -> Int -> IO (Either Text ())
-runBrowser siteDirectory screenshotPath dpi width height = do
+evaluateDetails :: FilePath -> FilePath -> FilePath -> IO (Either BuildError [DetailEvaluation])
+evaluateDetails pdfPath siteDirectory directory = do
+  reference <- readRgb (directory </> "reference-" <> show detailSelectionDpi <> ".png")
+  generated <- readRgb (directory </> "generated-" <> show detailSelectionDpi <> ".png")
+  case (,) <$> reference <*> generated >>= uncurry selectDetailRegions of
+    Left message -> pure (Left (EvaluationError message))
+    Right regions -> captureAll [(number, dpi, region) | (number, region) <- zip [1 ..] regions, dpi <- detailDpis]
+  where
+    captureAll [] = pure (Right [])
+    captureAll ((number, dpi, CaptureTile x y width height) : remaining) = do
+      let factor = dpi `div` detailSelectionDpi
+          region = CaptureTile (x * factor) (y * factor) (width * factor) (height * factor)
+          suffix = detailSuffix number dpi
+      result <- renderComparison pdfPath siteDirectory directory suffix dpi (Just region)
+      case result of
+        Left buildError -> pure (Left buildError)
+        Right (capture, metrics) -> fmap (fmap (DetailEvaluation number dpi capture metrics :)) (captureAll remaining)
+
+selectDetailRegions :: Image PixelRGB8 -> Image PixelRGB8 -> Either Text [CaptureTile]
+selectDetailRegions reference generated
+  | dimensions reference /= dimensions generated = Left "detail selection images have different dimensions"
+  | otherwise = Right (take maximumDetailRegions (map snd (sortOn (Down . fst) (mapMaybe scored regions))))
+  where
+    (width, height) = dimensions reference
+    regions =
+      [ CaptureTile x y (min detailRegionSide (width - x)) (min detailRegionSide (height - y))
+      | y <- [0, detailRegionSide .. height - 1]
+      , x <- [0, detailRegionSide .. width - 1]
+      ]
+    left = imageData reference
+    right = imageData generated
+    scored tile
+      | null offsets = Nothing
+      | otherwise = Just (sum [sum [channelDifference left right (offset + channel) | channel <- [0 .. 2]] | offset <- offsets], tile)
+      where
+        offsets =
+          [ offset
+          | y <- [captureY tile .. captureY tile + captureHeight tile - 1]
+          , x <- [captureX tile .. captureX tile + captureWidth tile - 1]
+          , let offset = (y * width + x) * 3
+          , neutralInk offset
+          ]
+    neutralInk offset = left Vector.! offset < 255 && left Vector.! offset == left Vector.! (offset + 1) && left Vector.! offset == left Vector.! (offset + 2)
+
+detailSuffix :: Int -> Int -> String
+detailSuffix number dpi = "-detail-" <> show number <> "-" <> show dpi
+
+runBrowser :: FilePath -> FilePath -> Int -> CaptureTile -> IO (Either Text ())
+runBrowser siteDirectory screenshotPath dpi (CaptureTile originX originY width height) = do
   browser <- maybe "chromium" id <$> lookupEnv "CHROMIUM"
   case captureTiles width height of
     [] -> pure (Left "browser capture dimensions must be positive")
@@ -182,8 +254,8 @@ runBrowser siteDirectory screenshotPath dpi width height = do
       "file://"
         <> siteDirectory </> "index.html"
         <> "?evaluation=" <> show dpi
-        <> "&evaluation-x=" <> show (captureX tile)
-        <> "&evaluation-y=" <> show (captureY tile)
+        <> "&evaluation-x=" <> show (originX + captureX tile)
+        <> "&evaluation-y=" <> show (originY + captureY tile)
     browserArguments tile =
       [ "--headless"
       , "--no-sandbox"
@@ -416,8 +488,8 @@ differenceChannel left right index = fromIntegral (min 255 (channelDifference le
 dimensions :: Image pixel -> (Int, Int)
 dimensions image = (imageWidth image, imageHeight image)
 
-writeReports :: FilePath -> [ScaleEvaluation] -> EvaluationResult -> IO ()
-writeReports directory scales result = do
+writeReports :: FilePath -> [ScaleEvaluation] -> [DetailEvaluation] -> EvaluationResult -> IO ()
+writeReports directory scales details result = do
   LazyByteString.writeFile (directory </> "evaluation.json") json
   Text.writeFile (directory </> "report.html") html
   where
@@ -434,6 +506,7 @@ writeReports directory scales result = do
             , "pixelTolerance" .= pixelTolerance
             , "passed" .= evaluationPassed result
             , "scales" .= map scaleJson scales
+            , "details" .= map detailJson details
             ]
         )
     html =
@@ -444,6 +517,8 @@ writeReports directory scales result = do
         , "<p>Generated/reference ink ratio: " <> Text.pack (show (evaluationInkRatio result)) <> "</p>"
         , "<p>Passed: " <> Text.pack (show (evaluationPassed result)) <> "</p>"
         , foldMap scaleHtml scales
+        , "<h2>Zoom details: inspection evidence</h2><p>These sampled crops do not contribute to the whole-board pass thresholds.</p>"
+        , foldMap detailHtml details
         , "</body></html>"
         ]
     scaleJson (ScaleEvaluation dpi scale) =
@@ -462,3 +537,25 @@ writeReports directory scales result = do
         , "<img src=\"generated-" <> Text.pack (show dpi) <> ".png\" width=\"32%\" alt=\"Generated at " <> Text.pack (show dpi) <> " DPI\">"
         , "<img src=\"difference-" <> Text.pack (show dpi) <> ".png\" width=\"32%\" alt=\"Difference at " <> Text.pack (show dpi) <> " DPI\">"
         ]
+    detailJson (DetailEvaluation number dpi region metrics) =
+      object
+        [ "number" .= number
+        , "dpi" .= dpi
+        , "x" .= captureX region
+        , "y" .= captureY region
+        , "width" .= captureWidth region
+        , "height" .= captureHeight region
+        , "inspectionOnly" .= True
+        , "meanError" .= evaluationMeanError metrics
+        , "pixelsWithinTolerance" .= evaluationPixelsWithinTolerance metrics
+        , "inkRatio" .= evaluationInkRatio metrics
+        ]
+    detailHtml (DetailEvaluation number dpi region metrics) =
+      let suffix = Text.pack (detailSuffix number dpi)
+       in Text.unlines
+            [ "<h3>Detail " <> Text.pack (show number) <> " at " <> Text.pack (show dpi) <> " DPI</h3>"
+            , "<p>Output-pixel origin: " <> Text.pack (show (captureX region, captureY region)) <> "; mean error: " <> Text.pack (show (evaluationMeanError metrics)) <> "; ink ratio: " <> Text.pack (show (evaluationInkRatio metrics)) <> "</p>"
+            , "<img src=\"reference" <> suffix <> ".png\" width=\"32%\" alt=\"Reference detail\">"
+            , "<img src=\"generated" <> suffix <> ".png\" width=\"32%\" alt=\"Generated detail\">"
+            , "<img src=\"difference" <> suffix <> ".png\" width=\"32%\" alt=\"Difference detail\">"
+            ]

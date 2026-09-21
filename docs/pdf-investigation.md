@@ -117,3 +117,5 @@ build/evaluation/
 ```
 
 These files are ignored build evidence. The reusable workflow uploads them as `pdf-site-evaluation`; they never enter `github-pages`, and the generated browser product has no dependency on Poppler. Evaluation mode does not draw the gamepad badge because that affordance has no source-PDF pixels. Consumer validation separately inspects the normal-mode anchor, accessible label, secure new-tab attributes, and badge.
+
+The report also includes bounded enlarged crops under the [zoom-detail evidence contract](/bdr/0018-zoom-detail-evidence.md). Rendering reviews inspect those crops because a whole-board pass can hide localized loss of detail.

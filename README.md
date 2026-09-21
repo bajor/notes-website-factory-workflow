@@ -71,6 +71,8 @@ On success, the reusable workflow uploads:
 
 The reusable workflow does not deploy either artifact. If evaluation fails, it withholds `github-pages` and uploads available evaluation evidence when possible.
 
+The evaluation report includes sampled 4× and 8× detail comparisons for visual inspection alongside the fixed whole-board checks. See the [zoom-detail contract](docs/bdr/0018-zoom-detail-evidence.md) for selection and evidence filenames.
+
 The site includes `index.html`, `runtime.js`, `styles.css`, `scene.generated.js`, and `scene-summary.json`. An `assets/` directory is added only when the board contains raster assets. The viewer keeps direct wheel, pinch, drag, and keyboard navigation; its visible control is `Fit`. YouTube links activate privacy-enhanced embeds; supported Algo Arcade game links open in a new tab with an accessible gamepad affordance.
 
 The parser intentionally supports only the observed Apple Freeform subset: unrotated zero-origin pages; JPEG and 8-bit Flate images; affine image transforms; clipping and native paths; common device and named one/three-component ICC-based colors; stroke miter and dash state under non-singular similarity transforms; Freeform opacity resources; and HTTP or HTTPS URI annotations. Unsupported structures, including PDF text, fail explicitly.
