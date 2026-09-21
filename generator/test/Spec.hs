@@ -6,7 +6,7 @@ module Main (main) where
 import Codec.Picture (Image, PixelRGB8 (PixelRGB8), PixelRGBA8 (PixelRGBA8), generateImage, pixelAt)
 import Data.Aeson (Value (Object, String), toJSON)
 import Factory.Domain
-import Factory.Evaluation (CaptureTile (CaptureTile), EvaluationResult (evaluationPassed), bodyIsReady, calculateDifference, captureTiles, stitchTiles)
+import Factory.Evaluation (CaptureTile (CaptureTile), EvaluationResult (evaluationPassed), bodyIsReady, calculateDifference, captureTiles, selectDetailRegions, stitchTiles)
 import Factory.Geometry (boardMatrix, identityMatrix, multiplyMatrix)
 import Factory.Interpreter (ColorSpaceResource (SupportedColorSpace, UnsupportedColorSpace), Resources (Resources), VisualResource (RasterResource, VectorResource), interpretOperators)
 import Factory.Pipeline (outputCompanionPaths, validateOutputPath)
@@ -340,11 +340,30 @@ evaluationTests =
         bodyIsReady "<title>data-ready=\"true\"</title><body data-failed=\"true\">" @?= False
     , testCase "a ready body passes the browser gate" $
         bodyIsReady "<body data-ready=\"true\"></body>" @?= True
+    , testCase "detail regions prioritize the largest handwriting error" $
+        selectDetailRegions detailReference detailGenerated @?= Right [CaptureTile 64 0 32 1, CaptureTile 0 0 32 1]
+    , testCase "equal-error detail selection is bounded in row-major order" $
+        let black = generateImage (\_ _ -> PixelRGB8 0 0 0) 129 33
+         in selectDetailRegions black black @?= Right [CaptureTile 0 0 32 32, CaptureTile 32 0 32 32, CaptureTile 64 0 32 32]
+    , testCase "blank references have no detail regions" $
+        selectDetailRegions blankImage blankImage @?= Right []
+    , testCase "detail regions clip to the reference edge" $
+        let edge = generateImage (\x y -> if x == 33 && y == 34 then PixelRGB8 0 0 0 else PixelRGB8 255 255 255) 34 35
+         in selectDetailRegions edge edge @?= Right [CaptureTile 32 32 2 3]
+    , testCase "colored highlights do not select detail regions" $
+        selectDetailRegions (generateImage (\_ _ -> PixelRGB8 255 0 0) 100 100) blankImage @?= Right []
+    , testCase "detail selection rejects mismatched images" $
+        selectDetailRegions redTile blankImage @?= Left "detail selection images have different dimensions"
     ]
   where
     redTile = generateImage (\_ _ -> PixelRGB8 255 0 0) 8192 1
     redColumn = generateImage (\_ _ -> PixelRGB8 255 0 0) 1 4096
     blueTile = generateImage (\_ _ -> PixelRGB8 0 0 255) 1 1
+    detailReference = generateImage (\x _ -> if x == 10 || x == 74 then PixelRGB8 0 0 0 else PixelRGB8 255 255 255) 96 1
+    detailGenerated = generateImage detailPixel 96 1
+    detailPixel 10 _ = PixelRGB8 64 64 64
+    detailPixel 74 _ = PixelRGB8 192 192 192
+    detailPixel _ _ = PixelRGB8 255 255 255
 
 siteTests :: TestTree
 siteTests =
