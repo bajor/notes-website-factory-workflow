@@ -351,7 +351,7 @@ evaluationTests =
         let edge = generateImage (\x y -> if x == 33 && y == 34 then PixelRGB8 0 0 0 else PixelRGB8 255 255 255) 34 35
          in selectDetailRegions edge edge @?= Right [CaptureTile 32 32 2 3]
     , testCase "colored highlights do not select detail regions" $
-        selectDetailRegions (generateImage (\_ _ -> PixelRGB8 255 0 0) 100 100) blankImage @?= Right []
+        selectDetailRegions (generateImage (\_ _ -> PixelRGB8 128 64 64) 100 100) blankImage @?= Right []
     , testCase "detail selection rejects mismatched images" $
         selectDetailRegions redTile blankImage @?= Left "detail selection images have different dimensions"
     ]

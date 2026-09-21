@@ -2,7 +2,7 @@
 type: Issue
 title: Preserve local traced detail
 description: Repair localized pixelation and retain zoomed visual evidence.
-status: In Progress
+status: Done
 timestamp: 2026-09-20
 ---
 # Preserve Local Traced Detail
@@ -35,3 +35,4 @@ The linked behavior's test design passes, `make test` and `make evaluate` pass, 
 - The local monolithic GCP evaluation was interrupted. Equivalent all-pixel comparisons completed in bounded browser tiles against the unchanged consumer revision's CI Poppler references: 18 DPI mean error `0.002264624`, within-tolerance fraction `0.992018364`, ink ratio `1.015922787`; 72 DPI values `0.001463132`, `0.994791566`, and `1.044231496`. Both scales passed the unchanged thresholds. Scene SHA-256: `bafb8c160474c1d0c09b2541c4a9c904ee33e9fb57afa3f66775341a0c1023d6`.
 - Zoom-detail implementation: 87 tests and factory `make evaluate` passed. The inspected report includes four correctly aligned synthetic detail captures with zero difference.
 - Algorithms consumer revision `7ff9eb5c4acb534b35e6bdfdb14faf3b484db17e` passed the complete `make evaluate` flow, including runtime and distribution checks. The inspected report contains six detail comparisons. Whole-board 18 DPI values are `0.002828299`, `0.982929377`, and `1.094038948`; 72 DPI values are `0.002168048`, `0.984938977`, and `1.140308337` (mean error, within-tolerance fraction, ink ratio respectively).
+- [PR #33](https://github.com/bajor/notes-website-factory-workflow/pull/33) supplies zoom-detail evidence. Fresh-session review found no blocking correctness issues; its color-filter coverage suggestion was incorporated without adding another test. Living Docs lint passes for all 63 documents.
