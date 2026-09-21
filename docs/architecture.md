@@ -60,7 +60,8 @@ sequenceDiagram
   G->>F: Read shared templates
   G-->>W: Validated static site
   W->>E: Compare Poppler and Chromium at 18 and 72 DPI
-  E->>E: Capture bounded tiles and stitch oversized scales
+   E->>E: Capture bounded tiles and stitch oversized scales
+   E->>E: Select and capture bounded zoom-detail evidence
   E-->>A: pdf-site-evaluation
   alt every scale passes
     W-->>A: github-pages
@@ -154,6 +155,8 @@ The deployed product receives only the validated scene and its extracted assets.
 5. Evaluation inputs remain removable build artifacts; process failures abort the build.
 6. The Pages artifact is uploaded only after parsing, validation, browser readiness, and both visual scales pass.
 7. Link classification, highlighter opacity, and tiled evaluation policies are specified by the linked ADRs and BDRs below.
+
+[ADR 0011](/adr/0011-bounded-zoom-detail-evidence.md) adds inspection-only detail selection and capture within `Factory.Evaluation`. [BDR 0018](/bdr/0018-zoom-detail-evidence.md) owns the sampling policy and added report fields. The browser reuses its existing evaluation offsets; production site data and module ownership are unchanged.
 
 ## Determinism and Compatibility
 

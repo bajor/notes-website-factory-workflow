@@ -10,3 +10,4 @@
 - [ADR 0008: Detect topics from a composited build render](/adr/0008-composited-topic-detection.md) - Superseded by ADR 0010.
 - [ADR 0009: Render recognized highlighter strokes as opaque](/adr/0009-opaque-highlighter-strokes.md) - Accepted. Add a narrow exception to low-alpha preservation.
 - [ADR 0010: Remove topic recognition and navigation](/adr/0010-remove-topic-recognition-and-navigation.md) - Accepted. Keep the generated scene source-derived and the viewer focused on direct navigation.
+- [ADR 0011: Bounded zoom-detail evidence](/adr/0011-bounded-zoom-detail-evidence.md) - Accepted. Supplement whole-board gates with enlarged handwriting crops.
