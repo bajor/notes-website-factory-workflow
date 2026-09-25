@@ -18,3 +18,4 @@
 - [BDR 0016: Alpha-layer traced SVG artwork](/bdr/0016-alpha-layer-traced-svg-artwork.md) - Superseded by BDR 0017.
 - [BDR 0017: Preserve local traced detail](/bdr/0017-preserve-local-traced-detail.md) - Accepted. Keep faint and cutoff-alpha contours local and interpolated.
 - [BDR 0018: Zoom-detail evidence](/bdr/0018-zoom-detail-evidence.md) - Accepted. Capture deterministic handwriting detail at four and eight times native-point scale.
+- [BDR 0019: Raster residual for untraceable strokes](/bdr/0019-raster-residual-for-untraceable-strokes.md) - Accepted. Keep sub-pixel handwriting as source raster beside traced artwork.

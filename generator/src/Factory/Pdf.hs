@@ -30,7 +30,7 @@ import Data.Text (Text)
 import Factory.Domain
 import Factory.Geometry (rectangleToBoard)
 import Factory.Interpreter (ColorSpaceResource (..), Resources (Resources), VisualResource (..), interpretOperators)
-import Factory.Vectorize (ImageDisposition (..), classifyImage, opaqueHighlighter, traceImage)
+import Factory.Vectorize (ArtworkPartition (..), ImageDisposition (..), classifyImage, opaqueHighlighter, partitionArtwork, traceImage)
 import Network.URI (URI (uriAuthority, uriFragment, uriPath, uriQuery, uriScheme), URIAuth (uriPort, uriRegName, uriUserInfo), parseURI)
 import Pdf.Content (Expr, Operator, parseContent, readNextOperator)
 import Pdf.Core
@@ -90,6 +90,7 @@ data PreparedImage
   = PreparedJpeg Asset ByteString
   | PreparedPng Asset (Image PixelRGBA8)
   | PreparedVector [VectorShape]
+  | PreparedMixed [VectorShape] Asset (Image PixelRGBA8)
 
 data ParsedPdf = ParsedPdf
   { parsedScene :: Scene 'Unvalidated
@@ -101,12 +102,14 @@ preparedResource prepared = case prepared of
   PreparedJpeg asset _ -> RasterResource (assetId asset)
   PreparedPng asset _ -> RasterResource (assetId asset)
   PreparedVector shapes -> VectorResource shapes
+  PreparedMixed shapes asset _ -> MixedResource shapes (assetId asset)
 
 preparedAsset :: PreparedImage -> Maybe Asset
 preparedAsset prepared = case prepared of
   PreparedJpeg asset _ -> Just asset
   PreparedPng asset _ -> Just asset
   PreparedVector _ -> Nothing
+  PreparedMixed _ asset _ -> Just asset
 
 parsePdf :: FilePath -> FilePath -> IO (Either BuildError ParsedPdf)
 parsePdf pdfPath assetDirectory = do
@@ -148,6 +151,7 @@ parseOpenPdf assetDirectory pdf = do
 
 isPreparedVector :: PreparedImage -> Bool
 isPreparedVector PreparedVector {} = True
+isPreparedVector PreparedMixed {} = True
 isPreparedVector _ = False
 
 isUsedRaster :: Set AssetId -> PreparedImage -> Bool
@@ -224,16 +228,18 @@ prepareImage pdf resourceName reference stream dictionary = do
         Left (UnsupportedImage message) -> throwError (UnsupportedImage (nameText resourceName <> ": " <> message))
         Left buildError -> throwError buildError
         Right classified -> pure classified
+      let pngAsset = Asset identifier ("assets/" <> baseName <> ".png") width height
       case disposition of
-        PreserveRaster ->
-          let fileName = baseName <> ".png"
-           in pure (PreparedPng (Asset identifier ("assets/" <> fileName) width height) image)
-        PreserveLowAlphaRaster ->
-          let fileName = baseName <> ".png"
-              outputImage = fromMaybe image (opaqueHighlighter image)
-           in pure (PreparedPng (Asset identifier ("assets/" <> fileName) width height) outputImage)
-        TraceAsVector -> PreparedVector <$> liftEither (traceImage image)
+        PreserveRaster -> pure (PreparedPng pngAsset image)
+        PreserveLowAlphaRaster -> pure (PreparedPng pngAsset (fromMaybe image (opaqueHighlighter image)))
+        TraceAsVector -> prepareArtwork pngAsset (partitionArtwork image)
     unsupported -> throwError (UnsupportedImage ("unsupported image filter: " <> unsupported))
+
+prepareArtwork :: Asset -> ArtworkPartition -> PdfAction PreparedImage
+prepareArtwork asset partition = case partition of
+  TraceableArtwork image -> PreparedVector <$> liftEither (traceImage image)
+  UntraceableArtwork image -> pure (PreparedPng asset image)
+  MixedArtwork traceable residual -> (\shapes -> PreparedMixed shapes asset residual) <$> liftEither (traceImage traceable)
 
 materializeImages :: FilePath -> [PreparedImage] -> PdfAction [Asset]
 materializeImages assetDirectory preparedImages = do
@@ -246,6 +252,7 @@ materializeImages assetDirectory preparedImages = do
       PreparedJpeg asset bytes -> liftIO (ByteString.writeFile (assetPath asset) bytes)
       PreparedPng asset image -> liftIO (writePng (assetPath asset) image)
       PreparedVector _ -> pure ()
+      PreparedMixed _ asset image -> liftIO (writePng (assetPath asset) image)
     assetPath asset = assetDirectory </> takeFileName (assetFile asset)
 
 readSoftMask :: Pdf -> Dict -> Int -> Int -> PdfAction (Maybe ByteString)

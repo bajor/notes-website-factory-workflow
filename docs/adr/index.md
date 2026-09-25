@@ -11,3 +11,4 @@
 - [ADR 0009: Render recognized highlighter strokes as opaque](/adr/0009-opaque-highlighter-strokes.md) - Accepted. Add a narrow exception to low-alpha preservation.
 - [ADR 0010: Remove topic recognition and navigation](/adr/0010-remove-topic-recognition-and-navigation.md) - Accepted. Keep the generated scene source-derived and the viewer focused on direct navigation.
 - [ADR 0011: Bounded zoom-detail evidence](/adr/0011-bounded-zoom-detail-evidence.md) - Accepted. Supplement whole-board gates with enlarged handwriting crops.
+- [ADR 0012: Component raster residual](/adr/0012-component-raster-residual.md) - Accepted. Keep untraceable connected components of traced artwork as source raster.

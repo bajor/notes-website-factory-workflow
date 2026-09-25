@@ -48,6 +48,8 @@ Classification uses the soft-mask samples before tracing, in this order:
 
 Tracing quantizes RGB channels in steps of 32 and uses a faint SVG layer for source alpha `88` through `95`. The image-classification cutoff remains `96`. Contours cross between integer alpha samples at `87.5` for the faint layer and `95.5` for the opaque layer, avoiding collapsed geometry at exact cutoff samples. Same-color sub-threshold edge samples contribute to interpolation, and adjacent opacity layers share their source-alpha crossing. Matching color-and-opacity boundaries become normalized even-odd paths. The fixed `0.25` square-pixel simplification bound applies independently to each contour; a simplification that destroys its signed area retains the unsimplified contour. There is no style-wide pixel-grid fallback. Low-alpha raster pixels become opaque only when the accepted highlighter profile applies. The browser restores each image XObject's PDF transform when it renders the SVG path data. [BDR 0017](/bdr/0017-preserve-local-traced-detail.md) owns local-detail behavior.
 
+Before tracing, each traceable image is divided into 8-connected components of nonzero alpha. A component whose alpha below `88` exceeds a quarter of its total alpha is not traced; it remains in a lossless PNG residual with source RGB and alpha, drawn with the image's own matrix, opacity, and clips. The GCP consumer showed why: Freeform downsampled large artwork groups to 4,096 pixels per side, down to 20 to 60 pixels per inch, leaving handwriting narrower than one source pixel. [BDR 0019](/bdr/0019-raster-residual-for-untraceable-strokes.md) owns this behavior.
+
 ## Selected Library
 
 The production parser uses the Haskell `pdf-toolbox` packages:
@@ -96,7 +98,7 @@ The following valid PDF features are not yet generalized:
 - internal destinations and non-URI annotation actions.
 - game providers, custom domains, or `bajor.github.io` pages outside the exact Algo Arcade game-route profile; these remain ordinary external links.
 
-Tracing does not recover semantic strokes, editable handwriting, original Freeform objects, gradients, or subpixel source geometry. Pixels at supported transparency levels become opaque quantized SVG fills. Low-alpha content remains raster; only positively identified highlighter strokes replace nonzero alpha with `255`. Opaque content remains raster rather than being guessed into vectors.
+Tracing does not recover semantic strokes, editable handwriting, original Freeform objects, gradients, or subpixel source geometry. Pixels at supported transparency levels become opaque quantized SVG fills. Components whose ink lies mostly below the vector alpha floor stay raster, so they soften rather than sharpen when zoomed. Low-alpha content remains raster; only positively identified highlighter strokes replace nonzero alpha with `255`. Opaque content remains raster rather than being guessed into vectors.
 
 Unsupported operators fail with a typed error. Some unsupported structures have dedicated errors, while others are rejected by scene validation. A future parser increment should begin with a real source file demonstrating one missing feature, then add one focused test and one minimal implementation.
 

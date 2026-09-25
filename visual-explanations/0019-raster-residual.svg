@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="560" viewBox="0 0 960 560" font-family="Helvetica, Arial, sans-serif" font-size="14">
+  <title>Raster residual for untraceable strokes</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#444"/>
+    </marker>
+  </defs>
+  <rect width="960" height="560" fill="#ffffff"/>
+
+  <text x="240" y="36" text-anchor="middle" font-size="18" font-weight="bold">Before: trace every component</text>
+  <text x="720" y="36" text-anchor="middle" font-size="18" font-weight="bold">After: partition, then trace</text>
+  <line x1="480" y1="20" x2="480" y2="540" stroke="#bbb" stroke-dasharray="6 4"/>
+
+  <!-- Before -->
+  <g stroke="#444" stroke-width="1.5" fill="none">
+    <rect x="90" y="64" width="300" height="56" rx="8" fill="#f3f3f3"/>
+    <rect x="90" y="170" width="300" height="72" rx="8" fill="#eef4ff"/>
+    <rect x="90" y="292" width="300" height="72" rx="8" fill="#fdecea"/>
+    <path d="M240 120 V166" marker-end="url(#arrow)"/>
+    <path d="M240 242 V288" marker-end="url(#arrow)"/>
+  </g>
+  <text x="240" y="90" text-anchor="middle">Traceable image resource</text>
+  <text x="240" y="108" text-anchor="middle" font-size="12" fill="#555">e.g. 45 ppi group capped at 4,096 px</text>
+  <text x="240" y="196" text-anchor="middle">Trace all pixels at alpha 88 / 96</text>
+  <text x="240" y="216" text-anchor="middle" font-size="12" fill="#555">Factory.Vectorize</text>
+  <text x="240" y="232" text-anchor="middle" font-size="12" fill="#555">samples below 88 are dropped</text>
+  <text x="240" y="318" text-anchor="middle">One VectorArtworkNode</text>
+  <text x="240" y="338" text-anchor="middle" font-size="12" fill="#a33">sub-pixel handwriting breaks</text>
+  <text x="240" y="354" text-anchor="middle" font-size="12" fill="#a33">into disconnected fragments</text>
+
+  <g transform="translate(120 400)">
+    <text x="0" y="0" font-size="12" fill="#555">Rendered stroke</text>
+    <path d="M0 40 l14 -12 M26 22 l10 -6 M52 18 l6 2 M80 26 l12 8 M110 40 l8 -6" stroke="#000" stroke-width="4" stroke-linecap="round" fill="none"/>
+  </g>
+
+  <!-- After -->
+  <g stroke="#444" stroke-width="1.5" fill="none">
+    <rect x="570" y="64" width="300" height="56" rx="8" fill="#f3f3f3"/>
+    <rect x="570" y="160" width="300" height="80" rx="8" fill="#fff7e0"/>
+    <rect x="510" y="300" width="200" height="72" rx="8" fill="#eef4ff"/>
+    <rect x="730" y="300" width="200" height="72" rx="8" fill="#eaf7ea"/>
+    <rect x="570" y="420" width="300" height="72" rx="8" fill="#f3f3f3"/>
+    <path d="M720 120 V156" marker-end="url(#arrow)"/>
+    <path d="M660 240 L610 296" marker-end="url(#arrow)"/>
+    <path d="M780 240 L830 296" marker-end="url(#arrow)"/>
+    <path d="M610 372 L690 416" marker-end="url(#arrow)"/>
+    <path d="M830 372 L750 416" marker-end="url(#arrow)"/>
+  </g>
+  <text x="720" y="90" text-anchor="middle">Traceable image resource</text>
+  <text x="720" y="108" text-anchor="middle" font-size="12" fill="#555">classification unchanged</text>
+  <text x="720" y="184" text-anchor="middle">Label 8-connected components</text>
+  <text x="720" y="204" text-anchor="middle" font-size="12" fill="#555">Factory.Vectorize: partitionArtwork</text>
+  <text x="720" y="222" text-anchor="middle" font-size="12" fill="#555">untraceable: ink below alpha 88 &gt; 25%</text>
+  <text x="610" y="326" text-anchor="middle">Traceable components</text>
+  <text x="610" y="344" text-anchor="middle" font-size="12" fill="#555">traced exactly as BDR 0017</text>
+  <text x="610" y="360" text-anchor="middle" font-size="12" fill="#555">(byte-identical contours)</text>
+  <text x="830" y="326" text-anchor="middle">Untraceable components</text>
+  <text x="830" y="344" text-anchor="middle" font-size="12" fill="#555">Factory.Pdf: one PNG residual</text>
+  <text x="830" y="360" text-anchor="middle" font-size="12" fill="#555">source RGB and alpha</text>
+  <text x="720" y="446" text-anchor="middle">VectorArtworkNode, then ImageNode</text>
+  <text x="720" y="464" text-anchor="middle" font-size="12" fill="#555">Factory.Interpreter: same matrix, opacity, clips</text>
+  <text x="720" y="480" text-anchor="middle" font-size="12" fill="#555">scene schema and site/runtime.js unchanged</text>
+
+  <g transform="translate(600 510)">
+    <text x="0" y="0" font-size="12" fill="#555">Rendered stroke</text>
+    <path d="M0 26 C30 6 60 6 90 20 S140 30 160 14" stroke="#333" stroke-opacity="0.8" stroke-width="3" stroke-linecap="round" fill="none"/>
+  </g>
+</svg>
