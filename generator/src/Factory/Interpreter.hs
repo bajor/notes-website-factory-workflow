@@ -41,6 +41,7 @@ data ColorSpaceResource
 data VisualResource
   = RasterResource AssetId
   | VectorResource [VectorShape]
+  | MixedResource [VectorShape] AssetId
   deriving stock (Eq, Show)
 
 data GraphicsState = GraphicsState
@@ -281,10 +282,11 @@ emitImage height resources machine value = do
       matrix = boardMatrix height (currentMatrix graphics)
       opacity = currentOpacity graphics
       clips = currentClips graphics
-      node = case resource of
-        RasterResource identifier -> ImageNode identifier matrix opacity clips
-        VectorResource shapes -> VectorArtworkNode shapes matrix opacity clips
-  Right machine {machineNodes = node : machineNodes machine}
+      nodes = case resource of
+        RasterResource identifier -> [ImageNode identifier matrix opacity clips]
+        VectorResource shapes -> [VectorArtworkNode shapes matrix opacity clips]
+        MixedResource shapes identifier -> [VectorArtworkNode shapes matrix opacity clips, ImageNode identifier matrix opacity clips]
+  Right machine {machineNodes = reverse nodes <> machineNodes machine}
 
 setAlpha :: Resources -> Machine -> Object -> Either BuildError Machine
 setAlpha resources machine value = do

@@ -2,7 +2,7 @@
 type: Context
 title: Project glossary
 description: Definitions for PDF rendering, workflow reuse, artifacts, and evaluation.
-timestamp: 2026-09-16
+timestamp: 2026-09-25
 ---
 # Glossary
 
@@ -16,11 +16,19 @@ A grayscale PDF image that supplies per-pixel opacity for another image resource
 
 ## Traceable Alpha Sample
 
-A soft-mask sample at or above alpha `96` that selects vector tracing for its complete image resource. Within a selected resource, samples from `88` through `95` are retained in a fixed-opacity SVG layer. A resource with no traceable sample remains raster; a positively identified highlighter stroke has a separate opacity policy.
+A soft-mask sample at or above alpha `96` that selects its image resource for component partitioning and vector tracing. Within a selected resource, samples from `88` through `95` are retained in a fixed-opacity SVG layer. A resource with no traceable sample remains raster; a positively identified highlighter stroke has a separate opacity policy.
 
 ## Vector Artwork
 
 A scene node containing normalized, closed SVG paths traced from an eligible embedded image.
+
+## Untraceable Component
+
+An 8-connected group of nonzero-alpha pixels in a traceable image whose alpha below `88` exceeds a quarter of its total alpha. Such strokes are narrower than one source pixel and cannot be traced without losing or distorting them.
+
+## Raster Residual
+
+A PNG asset holding a traceable image's untraceable components with source RGB and alpha. It is drawn immediately after the image's vector artwork with the same matrix, opacity, and clips.
 
 ## Raster Asset
 

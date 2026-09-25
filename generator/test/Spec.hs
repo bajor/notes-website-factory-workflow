@@ -5,14 +5,15 @@ module Main (main) where
 
 import Codec.Picture (Image, PixelRGB8 (PixelRGB8), PixelRGBA8 (PixelRGBA8), generateImage, pixelAt)
 import Data.Aeson (Value (Object, String), toJSON)
+import Data.Word (Word8)
 import Factory.Domain
 import Factory.Evaluation (CaptureTile (CaptureTile), EvaluationResult (evaluationPassed), bodyIsReady, calculateDifference, captureTiles, selectDetailRegions, stitchTiles)
 import Factory.Geometry (boardMatrix, identityMatrix, multiplyMatrix)
-import Factory.Interpreter (ColorSpaceResource (SupportedColorSpace, UnsupportedColorSpace), Resources (Resources), VisualResource (RasterResource, VectorResource), interpretOperators)
+import Factory.Interpreter (ColorSpaceResource (SupportedColorSpace, UnsupportedColorSpace), Resources (Resources), VisualResource (MixedResource, RasterResource, VectorResource), interpretOperators)
 import Factory.Pipeline (outputCompanionPaths, validateOutputPath)
 import Factory.Pdf (classifyUrl, rejectDecode, rgbaImage)
 import Factory.Site (renderIndexTemplate, validateScene)
-import Factory.Vectorize (ImageDisposition (..), classifyImage, opaqueHighlighter, traceImage)
+import Factory.Vectorize (ArtworkPartition (..), ImageDisposition (..), classifyImage, opaqueHighlighter, partitionArtwork, traceImage)
 import Pdf.Content (Op (..), Operator)
 import Pdf.Core (Object (Array, Name, Number))
 import Test.Tasty (TestTree, defaultMain, testGroup)
@@ -66,6 +67,12 @@ interpreterTests =
           @?= Right
             [ ImageNode (AssetId "asset-1") (Matrix 1 0 0 (-1) 0 100) 1 []
             , VectorArtworkNode [testVectorShape] (Matrix 1 0 0 (-1) 0 100) 1 []
+            ]
+    , testCase "mixed artwork emits its vector shapes before its raster residual" $
+        interpretOperators pageHeight (Resources (Map.singleton "Im1" (MixedResource [testVectorShape] (AssetId "asset-1"))) Map.empty Map.empty) [(Op_Do, [Name "Im1"])]
+          @?= Right
+            [ VectorArtworkNode [testVectorShape] (Matrix 1 0 0 (-1) 0 100) 1 []
+            , ImageNode (AssetId "asset-1") (Matrix 1 0 0 (-1) 0 100) 1 []
             ]
     , testCase "a closed subpath remains the current point" $
         case interpretOperators pageHeight emptyResources closedCurveOperators of
@@ -225,6 +232,26 @@ vectorizationTests =
           Right [leftShape, rightShape] ->
             assertBool ("both styles use the source boundary: " <> show [vectorPath leftShape, vectorPath rightShape]) (Text.isInfixOf "0.5" (unVectorPath (vectorPath leftShape)) && Text.isInfixOf "0.5" (unVectorPath (vectorPath rightShape)))
           result -> assertFailure ("unexpected trace result: " <> show result)
+    , testCase "fully traceable artwork is partitioned unchanged" $
+        assertBool "artwork stays whole vector input" (partitionArtwork solidVectorImage == TraceableArtwork solidVectorImage)
+    , testCase "sub-pixel strokes remain raster" $
+        assertBool "stroke stays whole raster input" (partitionArtwork thinStrokeImage == UntraceableArtwork thinStrokeImage)
+    , testCase "mixed artwork separates untraceable strokes from traceable components" $
+        case partitionArtwork strokeBesideBlockImage of
+          MixedArtwork traceable residual ->
+            map (\image -> [pixelAt image 1 1, pixelAt image 5 1]) [traceable, residual]
+              @?= [[PixelRGBA8 0 0 0 0, PixelRGBA8 0 0 0 255], [PixelRGBA8 0 0 0 60, PixelRGBA8 0 0 0 0]]
+          _ -> assertFailure "artwork was not partitioned into vector and raster components"
+    , testCase "separating an untraceable stroke keeps the remaining trace unchanged" $
+        case partitionArtwork strokeBesideBlockImage of
+          MixedArtwork traceable _ -> traceImage traceable @?= traceImage (cutoffComponentsImage 0)
+          _ -> assertFailure "artwork was not partitioned into vector and raster components"
+    , testCase "a component losing a quarter of its ink remains traceable" $
+        assertBool "boundary component stays vector" (partitionArtwork (quarterUntracedImage 85) == TraceableArtwork (quarterUntracedImage 85))
+    , testCase "a component losing more than a quarter of its ink becomes raster" $
+        assertBool "component crosses the bound" (partitionArtwork (quarterUntracedImage 86) == UntraceableArtwork (quarterUntracedImage 86))
+    , testCase "diagonally touching pixels form one component" $
+        assertBool "diagonal faint pixel joins opaque pixel" (partitionArtwork diagonalPairImage == TraceableArtwork diagonalPairImage)
     , testCase "contour tracing is deterministic" $
         traceImage diagonalStaircaseImage @?= traceImage diagonalStaircaseImage
     , testCase "nonzero highlighter pixels become opaque without changing RGB" $
@@ -541,6 +568,35 @@ cutoffComponentsImage count = generateImage pixel 8 4
       | y == 1 && x >= 1 && x <= count = PixelRGBA8 0 0 0 96
       | x >= 5 && x <= 6 && y >= 1 && y <= 2 = PixelRGBA8 0 0 0 255
       | otherwise = PixelRGBA8 0 0 0 0
+
+thinStrokeImage :: Image PixelRGBA8
+thinStrokeImage = generateImage pixel 8 4
+  where
+    pixel x y
+      | y == 1 && x >= 1 && x <= 3 = PixelRGBA8 0 0 0 (if x == 2 then 96 else 60)
+      | otherwise = PixelRGBA8 0 0 0 0
+
+-- | 'thinStrokeImage' beside the opaque block of 'cutoffComponentsImage',
+-- separated by one transparent column.
+strokeBesideBlockImage :: Image PixelRGBA8
+strokeBesideBlockImage = generateImage pixel 8 4
+  where
+    pixel x y
+      | x >= 5 && x <= 6 && y >= 1 && y <= 2 = PixelRGBA8 0 0 0 255
+      | otherwise = pixelAt thinStrokeImage x y
+
+quarterUntracedImage :: Word8 -> Image PixelRGBA8
+quarterUntracedImage faintAlpha = generateImage pixel 2 1
+  where
+    pixel 0 _ = PixelRGBA8 0 0 0 255
+    pixel _ _ = PixelRGBA8 0 0 0 faintAlpha
+
+diagonalPairImage :: Image PixelRGBA8
+diagonalPairImage = generateImage pixel 2 2
+  where
+    pixel 0 0 = PixelRGBA8 0 0 0 255
+    pixel 1 1 = PixelRGBA8 0 0 0 60
+    pixel _ _ = PixelRGBA8 0 0 0 0
 
 subThresholdRampImage :: Image PixelRGBA8
 subThresholdRampImage = generateImage pixel 2 2

@@ -2,7 +2,7 @@
 type: Architecture View
 title: Notes website factory architecture
 description: Repository ownership, reusable workflow, module boundaries, and evaluation flow.
-timestamp: 2026-09-20
+timestamp: 2026-09-25
 ---
 # Architecture
 
@@ -86,6 +86,8 @@ flowchart TD
   Highlighter{Highlighter profile}
   Raster[Preserve source-alpha raster]
   OpaqueMarker[Opaque highlighter raster]
+  Partition{Component loses more than<br/>a quarter of its ink below alpha 88}
+  Residual[Source raster residual]
   Vector[Trace layer-aware SVG contours<br/>Simplify each contour independently]
   Reject[Typed unsupported-image failure]
   Links[Extract URI annotations]
@@ -112,7 +114,9 @@ flowchart TD
   Traceable -->|present| Fraction
   Fraction -->|at most 0.01| Raster
   Fraction -->|between 0.01 and 0.02| Reject
-  Fraction -->|at least 0.02| Vector
+  Fraction -->|at least 0.02| Partition
+  Partition -->|no| Vector
+  Partition -->|yes| Residual --> Interpret
   Target -->|supported video| YouTube
   Target -->|exact game route| Game
   Target -->|other HTTP or HTTPS| External
@@ -131,15 +135,17 @@ The deployed product receives only the validated scene and its extracted assets.
 
 [BDR 0017](/bdr/0017-preserve-local-traced-detail.md) owns layer-aware contour interpolation and local simplification; `Factory.Vectorize` retains that responsibility without changing the scene schema or browser renderer.
 
+[ADR 0012](/adr/0012-component-raster-residual.md) adds a component partition before tracing. `Factory.Vectorize` separates untraceable 8-connected components, `Factory.Pdf` writes them as one PNG residual, and `Factory.Interpreter` emits the resource's vector node followed by an image node with the same placement. [BDR 0019](/bdr/0019-raster-residual-for-untraceable-strokes.md) owns the observable behavior.
+
 ## Module Boundaries
 
 | Module | Responsibility | Effects |
 | --- | --- | --- |
 | `Factory.Domain` | Coordinates, matrices, color spaces, paint styles, nodes, typed link targets, assets, titles, validation phases, and errors | None |
 | `Factory.Geometry` | PDF-to-board transformations and affine matrix operations | None |
-| `Factory.Interpreter` | PDF operator state machine and scene-node emission | None |
-| `Factory.Vectorize` | Image classification, highlighter opacity profiling, quantization, contour tracing, and simplification | None |
-| `Factory.Pdf` | PDF objects, streams, resources, annotations, structural URL classification, and raster materialization | File input and asset output |
+| `Factory.Interpreter` | PDF operator state machine and scene-node emission, including paired vector and residual raster nodes | None |
+| `Factory.Vectorize` | Image classification, highlighter opacity profiling, traceable-component partitioning, quantization, contour tracing, and simplification | None |
+| `Factory.Pdf` | PDF objects, streams, resources, annotations, structural URL classification, and raster and residual materialization | File input and asset output |
 | `Factory.Site` | Scene validation and deterministic site emission | Template and site output |
 | `Factory.Evaluation` | Poppler/Chromium execution, bounded capture planning, image stitching, metrics, and reports | Processes and report output |
 | `Factory.Pipeline` | CLI dispatch, discovery, protected paths, staging, and promotion | Filesystem orchestration |
@@ -167,4 +173,4 @@ The deployed product receives only the validated scene and its extracted assets.
 - `site-title`, `github-pages`, `pdf-site-evaluation`, and generated filenames are public contracts.
 - A moving `main` reference intentionally updates consumers on their next run; factory CI exercises the actual reusable workflow before merge.
 
-[ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [ADR 0004](/adr/0004-linked-game-cards.md) owns measured mask and game-link trust boundaries. [ADR 0006](/adr/0006-tile-oversized-browser-evaluations.md) owns bounded evaluation capture, and [ADR 0009](/adr/0009-opaque-highlighter-strokes.md) owns the low-alpha highlighter exception. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md), [BDR 0006](/bdr/0006-expanded-freeform-graphics-output.md), [BDR 0007](/bdr/0007-tiled-visual-evaluation.md), [BDR 0008](/bdr/0008-fixed-light-viewer.md), [BDR 0011](/bdr/0011-opaque-highlighter-output.md), and [BDR 0013](/bdr/0013-remove-topic-navigation.md) own current observable behavior.
+[ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [ADR 0004](/adr/0004-linked-game-cards.md) owns measured mask and game-link trust boundaries. [ADR 0006](/adr/0006-tile-oversized-browser-evaluations.md) owns bounded evaluation capture, [ADR 0009](/adr/0009-opaque-highlighter-strokes.md) owns the low-alpha highlighter exception, and [ADR 0012](/adr/0012-component-raster-residual.md) owns the traced-artwork raster residual. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md), [BDR 0006](/bdr/0006-expanded-freeform-graphics-output.md), [BDR 0007](/bdr/0007-tiled-visual-evaluation.md), [BDR 0008](/bdr/0008-fixed-light-viewer.md), [BDR 0011](/bdr/0011-opaque-highlighter-output.md), [BDR 0013](/bdr/0013-remove-topic-navigation.md), [BDR 0017](/bdr/0017-preserve-local-traced-detail.md), and [BDR 0019](/bdr/0019-raster-residual-for-untraceable-strokes.md) own current observable behavior.

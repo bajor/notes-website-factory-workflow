@@ -3,14 +3,19 @@
 
 -- | Deterministically classify and trace embedded Freeform artwork.
 module Factory.Vectorize
-  ( ImageDisposition (..)
+  ( ArtworkPartition (..)
+  , ImageDisposition (..)
   , classifyImage
   , opaqueHighlighter
+  , partitionArtwork
   , traceImage
   ) where
 
-import Codec.Picture (Image, PixelRGBA8 (PixelRGBA8), generateImage, imageHeight, imageWidth, pixelAt)
+import Codec.Picture (Image, PixelRGBA8 (PixelRGBA8), generateImage, imageData, imageHeight, imageWidth, pixelAt)
+import Control.Monad (foldM)
+import Control.Monad.ST (runST)
 import Data.ByteString (ByteString)
+import Data.Int (Int32)
 import Data.List (foldl', maximumBy)
 import Data.Map.Strict (Map)
 import Data.Maybe (catMaybes)
@@ -24,9 +29,20 @@ import qualified Data.ByteString as ByteString
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import qualified Data.Text as Text
+import qualified Data.Vector.Storable as Storable
+import qualified Data.Vector.Unboxed as Unboxed
+import qualified Data.Vector.Unboxed.Mutable as MUnboxed
 
 data ImageDisposition = PreserveRaster | PreserveLowAlphaRaster | TraceAsVector
   deriving stock (Eq, Show)
+
+-- | Traceable artwork split by connected component. Mixed artwork carries the
+-- traceable components first and the untraceable raster residual second.
+data ArtworkPartition
+  = TraceableArtwork (Image PixelRGBA8)
+  | UntraceableArtwork (Image PixelRGBA8)
+  | MixedArtwork (Image PixelRGBA8) (Image PixelRGBA8)
+  deriving stock (Eq)
 
 data Style = Style Word8 Word8 Word8 Word8
   deriving stock (Eq, Ord, Show)
@@ -75,6 +91,9 @@ minimumHighlighterAspect = 4
 
 minimumHighlighterChroma :: Int
 minimumHighlighterChroma = 28
+
+maximumUntracedInkFraction :: Double
+maximumUntracedInkFraction = 0.25
 
 classifyImage :: Maybe ByteString -> Either BuildError ImageDisposition
 classifyImage Nothing = Right PreserveRaster
@@ -135,6 +154,81 @@ addPixel x y (PixelRGBA8 red green blue alpha) profile =
     }
   where
     channels = map fromIntegral [red, green, blue] :: [Int]
+
+-- | Keep components as raster when tracing would drop too much of their ink.
+--
+-- Tracing retains only samples at or above 'minimumVectorLayerAlpha'. Strokes
+-- narrower than a source pixel keep most of their ink below that alpha and
+-- break apart when traced. Components are 8-connected, so no contour cell
+-- spans two of them and removing one never changes another's trace.
+partitionArtwork :: Image PixelRGBA8 -> ArtworkPartition
+partitionArtwork image
+  | not (Unboxed.or untraceable) = TraceableArtwork image
+  | Unboxed.and untraceable = UntraceableArtwork image
+  | otherwise = MixedArtwork (selectComponents not) (selectComponents id)
+  where
+    (labels, untraceable) = componentTraceability image
+    width = imageWidth image
+    selectComponents keep = generateImage pixel width (imageHeight image)
+      where
+        pixel x y = case labels Unboxed.! (y * width + x) of
+          0 -> PixelRGBA8 0 0 0 0
+          label
+            | keep (untraceable Unboxed.! (fromIntegral label - 1)) -> pixelAt image x y
+            | otherwise -> PixelRGBA8 0 0 0 0
+
+-- | Label 8-connected visible components and flag those that are untraceable.
+componentTraceability :: Image PixelRGBA8 -> (Unboxed.Vector Int32, Unboxed.Vector Bool)
+componentTraceability image = runST $ do
+  labels <- MUnboxed.replicate pixelCount 0
+  flags <- scan labels 0 0 []
+  frozen <- Unboxed.unsafeFreeze labels
+  pure (frozen, Unboxed.fromList (reverse flags))
+  where
+    width = imageWidth image
+    height = imageHeight image
+    pixelCount = width * height
+    alphaAt index = fromIntegral (imageData image Storable.! (index * 4 + 3)) :: Int
+    scan labels !index !count flags
+      | index == pixelCount = pure flags
+      | alphaAt index == 0 = scan labels (index + 1) count flags
+      | otherwise = do
+          current <- MUnboxed.read labels index
+          if current /= 0
+            then scan labels (index + 1) count flags
+            else do
+              let label = count + 1
+              MUnboxed.write labels index label
+              (ink, untraced) <- fill labels label [index] 0 0
+              scan labels (index + 1) label (isUntraceable ink untraced : flags)
+    fill labels label stack !ink !untraced = case stack of
+      [] -> pure (ink, untraced)
+      index : rest -> do
+        let alpha = alphaAt index
+            untracedAlpha = if alpha < fromIntegral minimumVectorLayerAlpha then alpha else 0
+        next <- foldM (claim labels label) rest (neighbors index)
+        fill labels label next (ink + alpha) (untraced + untracedAlpha)
+    claim labels label stack neighbor
+      | alphaAt neighbor == 0 = pure stack
+      | otherwise = do
+          current <- MUnboxed.read labels neighbor
+          if current /= 0
+            then pure stack
+            else neighbor : stack <$ MUnboxed.write labels neighbor label
+    neighbors index =
+      [ neighborY * width + neighborX
+      | offsetY <- [-1, 0, 1]
+      , offsetX <- [-1, 0, 1]
+      , (offsetX, offsetY) /= (0, 0)
+      , let neighborX = x + offsetX
+            neighborY = y + offsetY
+      , neighborX >= 0 && neighborX < width && neighborY >= 0 && neighborY < height
+      ]
+      where
+        (y, x) = index `divMod` width
+
+isUntraceable :: Int -> Int -> Bool
+isUntraceable ink untraced = fromIntegral untraced > maximumUntracedInkFraction * fromIntegral ink
 
 traceImage :: Image PixelRGBA8 -> Either BuildError [VectorShape]
 traceImage image
