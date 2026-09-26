@@ -30,7 +30,7 @@ import Data.Text (Text)
 import Factory.Domain
 import Factory.Geometry (rectangleToBoard)
 import Factory.Interpreter (ColorSpaceResource (..), Resources (Resources), VisualResource (..), interpretOperators)
-import Factory.Vectorize (ArtworkPartition (..), ImageDisposition (..), classifyImage, opaqueHighlighter, partitionArtwork, traceImage, traceSmoothImage)
+import Factory.Vectorize (ArtworkPartition (..), ImageDisposition (..), classifyImage, opaqueHighlighter, partitionArtwork, traceImage, traceReconstructedImage, traceSmoothImage)
 import Network.URI (URI (uriAuthority, uriFragment, uriPath, uriQuery, uriScheme), URIAuth (uriPort, uriRegName, uriUserInfo), parseURI)
 import Pdf.Content (Expr, Operator, parseContent, readNextOperator)
 import Pdf.Core
@@ -239,7 +239,8 @@ prepareArtwork :: Asset -> ArtworkPartition -> PdfAction PreparedImage
 prepareArtwork asset partition = do
   traced <- traverse (liftEither . traceImage) (tracedComponents partition)
   smoothed <- traverse (liftEither . traceSmoothImage) (smoothedComponents partition)
-  let shapes = concat (catMaybes [traced, smoothed])
+  reconstructed <- traverse (liftEither . traceReconstructedImage) (reconstructedComponents partition)
+  let shapes = concat (catMaybes [traced, smoothed, reconstructed])
   pure $ case residualComponents partition of
     Nothing -> PreparedVector shapes
     Just residual

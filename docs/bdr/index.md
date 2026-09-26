@@ -19,4 +19,5 @@
 - [BDR 0017: Preserve local traced detail](/bdr/0017-preserve-local-traced-detail.md) - Accepted. Keep faint and cutoff-alpha contours local and interpolated.
 - [BDR 0018: Zoom-detail evidence](/bdr/0018-zoom-detail-evidence.md) - Accepted. Capture deterministic handwriting detail at four and eight times native-point scale.
 - [BDR 0019: Raster residual for untraceable strokes](/bdr/0019-raster-residual-for-untraceable-strokes.md) - Superseded by BDR 0020.
-- [BDR 0020: Smooth thin-stroke tracing](/bdr/0020-smooth-thin-stroke-tracing.md) - Accepted. Trace thin single-color strokes at source weight as smooth curves beside pixel tracing and the raster residual.
+- [BDR 0020: Smooth thin-stroke tracing](/bdr/0020-smooth-thin-stroke-tracing.md) - Superseded by BDR 0021.
+- [BDR 0021: Reconstructed sub-pixel strokes](/bdr/0021-reconstructed-sub-pixel-strokes.md) - Accepted. Redraw narrow single-color sub-pixel strokes as crisp opaque curves; keep other untraceable marks raster.
