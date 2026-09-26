@@ -13,7 +13,7 @@ import Factory.Interpreter (ColorSpaceResource (SupportedColorSpace, Unsupported
 import Factory.Pipeline (outputCompanionPaths, validateOutputPath)
 import Factory.Pdf (classifyUrl, rejectDecode, rgbaImage)
 import Factory.Site (renderIndexTemplate, validateScene)
-import Factory.Vectorize (ArtworkPartition (..), ImageDisposition (..), classifyImage, opaqueHighlighter, partitionArtwork, traceImage, traceSmoothImage)
+import Factory.Vectorize (ArtworkPartition (..), ImageDisposition (..), classifyImage, opaqueHighlighter, partitionArtwork, traceImage, traceReconstructedImage, traceSmoothImage)
 import Pdf.Content (Op (..), Operator)
 import Pdf.Core (Object (Array, Name, Number))
 import Test.Tasty (TestTree, defaultMain, testGroup)
@@ -233,29 +233,33 @@ vectorizationTests =
             assertBool ("both styles use the source boundary: " <> show [vectorPath leftShape, vectorPath rightShape]) (Text.isInfixOf "0.5" (unVectorPath (vectorPath leftShape)) && Text.isInfixOf "0.5" (unVectorPath (vectorPath rightShape)))
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "thick artwork is partitioned unchanged for pixel tracing" $
-        assertBool "artwork stays whole pixel-tracing input" (partitionArtwork thickBlockImage == ArtworkPartition (Just thickBlockImage) Nothing Nothing)
-    , testCase "sub-pixel strokes remain raster" $
-        assertBool "stroke stays whole raster input" (partitionArtwork thinStrokeImage == ArtworkPartition Nothing Nothing (Just thinStrokeImage))
+        assertBool "artwork stays whole pixel-tracing input" (partitionArtwork thickBlockImage == ArtworkPartition (Just thickBlockImage) Nothing Nothing Nothing)
+    , testCase "narrow sub-pixel strokes are reconstructed" $
+        assertBool "stroke stays whole reconstruction input" (partitionArtwork thinStrokeImage == ArtworkPartition Nothing Nothing (Just thinStrokeImage) Nothing)
+    , testCase "wide translucent marks remain raster" $
+        assertBool "mark stays whole raster input" (partitionArtwork translucentBlockImage == ArtworkPartition Nothing Nothing Nothing (Just translucentBlockImage))
+    , testCase "faint marks below the reconstruction peak remain raster" $
+        assertBool "mark stays whole raster input" (partitionArtwork faintMarkImage == ArtworkPartition Nothing Nothing Nothing (Just faintMarkImage))
     , testCase "mixed artwork separates untraceable strokes from traceable components" $
         case partitionArtwork strokeBesideBlockImage of
-          ArtworkPartition (Just traced) Nothing (Just residual) ->
-            map (\image -> [pixelAt image 1 1, pixelAt image 5 2]) [traced, residual]
+          ArtworkPartition (Just traced) Nothing (Just reconstructed) Nothing ->
+            map (\image -> [pixelAt image 1 1, pixelAt image 5 2]) [traced, reconstructed]
               @?= [[PixelRGBA8 0 0 0 0, PixelRGBA8 0 0 0 255], [PixelRGBA8 0 0 0 60, PixelRGBA8 0 0 0 0]]
-          _ -> assertFailure "artwork was not partitioned into vector and raster components"
+          _ -> assertFailure "artwork was not partitioned into traced and reconstructed components"
     , testCase "separating an untraceable stroke keeps the remaining trace unchanged" $
         case partitionArtwork strokeBesideBlockImage of
-          ArtworkPartition (Just traced) _ _ -> traceImage traced @?= traceImage thickBlockImage
-          _ -> assertFailure "artwork was not partitioned into vector and raster components"
+          ArtworkPartition (Just traced) _ _ _ -> traceImage traced @?= traceImage thickBlockImage
+          _ -> assertFailure "artwork was not partitioned into traced and reconstructed components"
     , testCase "a component losing a quarter of its ink remains vector" $
         assertBool "boundary component has no raster residual" (null (residualComponents (partitionArtwork (quarterUntracedImage 85))))
-    , testCase "a component losing more than a quarter of its ink becomes raster" $
-        assertBool "component crosses the bound" (partitionArtwork (quarterUntracedImage 86) == ArtworkPartition Nothing Nothing (Just (quarterUntracedImage 86)))
+    , testCase "a component losing more than a quarter of its ink leaves tracing" $
+        assertBool "component crosses the bound" (partitionArtwork (quarterUntracedImage 86) == ArtworkPartition Nothing Nothing (Just (quarterUntracedImage 86)) Nothing)
     , testCase "diagonally touching pixels form one component" $
         assertBool "diagonal faint pixel has no raster residual" (null (residualComponents (partitionArtwork diagonalPairImage)))
     , testCase "thin single-color strokes are traced from a supersampled field" $
-        assertBool "stroke is smoothed whole" (partitionArtwork thinLineImage == ArtworkPartition Nothing (Just thinLineImage) Nothing)
+        assertBool "stroke is smoothed whole" (partitionArtwork thinLineImage == ArtworkPartition Nothing (Just thinLineImage) Nothing Nothing)
     , testCase "thin multicolor strokes keep pixel tracing" $
-        assertBool "stroke stays whole pixel-tracing input" (partitionArtwork twoColorLineImage == ArtworkPartition (Just twoColorLineImage) Nothing Nothing)
+        assertBool "stroke stays whole pixel-tracing input" (partitionArtwork twoColorLineImage == ArtworkPartition (Just twoColorLineImage) Nothing Nothing Nothing)
     , testCase "smoothed strokes are single closed cubic contours" $
         case traceSmoothImage thinLineImage of
           Right [shape] ->
@@ -279,6 +283,20 @@ vectorizationTests =
           Right [shape] ->
             assertBool "a segment starts without a handle" (any (\(start, handle, _, _) -> start == handle) (cubicSegments 12 5 (unVectorPath (vectorPath shape))))
           result -> assertFailure ("unexpected smooth trace result: " <> show result)
+    , testCase "reconstructed strokes are single closed cubic contours of opaque ink" $
+        case traceReconstructedImage thinStrokeImage of
+          Right [shape] ->
+            let path = unVectorPath (vectorPath shape)
+             in assertBool ("path is one closed opaque cubic contour: " <> show path) (Text.count "M" path == 1 && Text.isInfixOf "C" path && Text.isSuffixOf "Z" path && vectorOpacity shape == 1)
+          result -> assertFailure ("unexpected reconstruction result: " <> show result)
+    , testCase "reconstructed strokes stay whole along uneven intensity" $
+        case (traceImage unevenStrokeImage, traceReconstructedImage unevenStrokeImage) of
+          (Right traced, Right [reconstructed]) ->
+            let pieces = sum (map (Text.count "M" . unVectorPath . vectorPath) traced)
+             in assertBool ("pixel tracing splits the stroke into " <> show pieces <> " pieces; reconstruction keeps one") (pieces > 1 && Text.count "M" (unVectorPath (vectorPath reconstructed)) == 1)
+          result -> assertFailure ("unexpected trace results: " <> show result)
+    , testCase "stroke reconstruction is deterministic" $
+        traceReconstructedImage unevenStrokeImage @?= traceReconstructedImage unevenStrokeImage
     , testCase "smooth tracing is deterministic" $
         traceSmoothImage dotOnLineImage @?= traceSmoothImage dotOnLineImage
     , testCase "contour tracing is deterministic" $
@@ -604,6 +622,38 @@ thinStrokeImage = generateImage pixel 14 10
     pixel x y
       | y == 1 && x >= 1 && x <= 3 = PixelRGBA8 0 0 0 (if x == 2 then 96 else 60)
       | otherwise = PixelRGBA8 0 0 0 0
+
+-- | A translucent block, as a highlighter or shading mark would be.
+translucentBlockImage :: Image PixelRGBA8
+translucentBlockImage = generateImage pixel 14 10
+  where
+    pixel x y = case pixelAt thickBlockImage x y of
+      PixelRGBA8 _ _ _ 0 -> PixelRGBA8 0 0 0 0
+      _ -> PixelRGBA8 0 0 0 60
+
+-- | 'thinStrokeImage' with a peak below the reconstruction floor.
+faintMarkImage :: Image PixelRGBA8
+faintMarkImage = generateImage pixel 14 10
+  where
+    pixel x y = case pixelAt thinStrokeImage x y of
+      PixelRGBA8 _ _ _ 0 -> PixelRGBA8 0 0 0 0
+      _ -> PixelRGBA8 0 0 0 40
+
+-- | A shallow sub-pixel stroke whose coverage shifts between two rows, so its
+-- peak alpha dips wherever it straddles them.
+unevenStrokeImage :: Image PixelRGBA8
+unevenStrokeImage = generateImage pixel 20 9
+  where
+    pixel x y
+      | x < 2 || x > 17 = PixelRGBA8 0 0 0 0
+      | y == row = PixelRGBA8 0 0 0 (coverage (1 - fraction))
+      | y == row + 1 = PixelRGBA8 0 0 0 (coverage fraction)
+      | otherwise = PixelRGBA8 0 0 0 0
+      where
+        center = 2 + fromIntegral (x - 2) / 4 :: Double
+        row = floor center
+        fraction = center - fromIntegral row
+    coverage share = round (150 * share)
 
 -- | An opaque block wider than the smooth-tracing stroke limit.
 thickBlockImage :: Image PixelRGBA8

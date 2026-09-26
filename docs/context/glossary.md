@@ -30,9 +30,13 @@ An 8-connected group of nonzero-alpha pixels in a traceable image whose alpha be
 
 A traceable 8-connected component whose count of pixels at alpha `128` or above, doubled, is less than three times the count of those pixels bordering lower alpha. It identifies strokes up to about three source pixels wide. A single-color thin component is smooth-traced: from a supersampled bicubic field, at the contour level that preserves its ink area, as closed cubic curves.
 
+## Reconstructed Stroke
+
+An untraceable component that is narrow and single-colored at half its own peak alpha, with a peak of at least `48`. It is redrawn as opaque ink from its supersampled field divided by the field's local maximum, so its outline stays continuous where the source peak dips.
+
 ## Raster Residual
 
-A PNG asset holding a traceable image's untraceable components with source RGB and alpha. It is drawn immediately after the image's vector artwork with the same matrix, opacity, and clips.
+A PNG asset holding a traceable image's untraceable components that are not reconstructed strokes, with source RGB and alpha. It is drawn immediately after the image's vector artwork with the same matrix, opacity, and clips.
 
 ## Raster Asset
 

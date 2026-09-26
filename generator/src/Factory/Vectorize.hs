@@ -9,6 +9,7 @@ module Factory.Vectorize
   , opaqueHighlighter
   , partitionArtwork
   , traceImage
+  , traceReconstructedImage
   , traceSmoothImage
   ) where
 
@@ -44,11 +45,12 @@ data ImageDisposition = PreserveRaster | PreserveLowAlphaRaster | TraceAsVector
 data ArtworkPartition = ArtworkPartition
   { tracedComponents :: Maybe (Image PixelRGBA8)
   , smoothedComponents :: Maybe (Image PixelRGBA8)
+  , reconstructedComponents :: Maybe (Image PixelRGBA8)
   , residualComponents :: Maybe (Image PixelRGBA8)
   }
   deriving stock (Eq)
 
-data ComponentKind = PixelTraced | SmoothTraced | RasterResidual
+data ComponentKind = PixelTraced | SmoothTraced | ReconstructedStroke | RasterResidual
   deriving stock (Eq)
 
 data ComponentColor = NoComponentColor | ComponentColor Word8 Word8 Word8 | MixedComponentColors
@@ -135,6 +137,18 @@ histogramBinWidth = 0.0625
 minimumCornerCosine :: Double
 minimumCornerCosine = -0.5
 
+minimumReconstructionPeak :: Int
+minimumReconstructionPeak = 48
+
+reconstructionLevel :: Double
+reconstructionLevel = 0.6
+
+normalizationRadius :: Int
+normalizationRadius = 3
+
+minimumNormalizedAlpha :: Double
+minimumNormalizedAlpha = 24
+
 classifyImage :: Maybe ByteString -> Either BuildError ImageDisposition
 classifyImage Nothing = Right PreserveRaster
 classifyImage (Just alpha)
@@ -199,19 +213,20 @@ addPixel x y (PixelRGBA8 red green blue alpha) profile =
 --
 -- Tracing retains only samples at or above 'minimumVectorLayerAlpha'. Strokes
 -- narrower than a source pixel keep most of their ink below that alpha and
--- break apart when traced, so they stay raster. Strokes up to about three
--- pixels wide trace coarsely at pixel resolution, so single-color ones are
--- traced from a supersampled field instead. Components are 8-connected, so no
--- contour cell spans two of them and separating one never changes another's
--- trace.
+-- break apart when traced; narrow single-color ones are reconstructed as pen
+-- strokes and the rest stay raster. Strokes up to about three pixels wide
+-- trace coarsely at pixel resolution, so single-color ones are traced from a
+-- supersampled field instead. Components are 8-connected, so no contour cell
+-- spans two of them and separating one never changes another's trace.
 partitionArtwork :: Image PixelRGBA8 -> ArtworkPartition
 partitionArtwork image
-  | all (== PixelTraced) kinds = ArtworkPartition (Just image) Nothing Nothing
-  | all (== RasterResidual) kinds = ArtworkPartition Nothing Nothing (Just image)
-  | otherwise = ArtworkPartition (selectComponents PixelTraced) (selectComponents SmoothTraced) (selectComponents RasterResidual)
+  | all (== PixelTraced) kinds = ArtworkPartition (Just image) Nothing Nothing Nothing
+  | all (== RasterResidual) kinds = ArtworkPartition Nothing Nothing Nothing (Just image)
+  | otherwise =
+      ArtworkPartition (selectComponents PixelTraced) (selectComponents SmoothTraced) (selectComponents ReconstructedStroke) (selectComponents RasterResidual)
   where
     (labels, components) = labelComponents image
-    kinds = Boxed.fromList (map componentKind components)
+    kinds = Boxed.fromList (map (componentKind image) components)
     width = imageWidth image
     selectComponents kind
       | kind `notElem` kinds = Nothing
@@ -223,14 +238,38 @@ partitionArtwork image
             | kinds Boxed.! (fromIntegral label - 1) == kind -> pixelAt image x y
             | otherwise -> PixelRGBA8 0 0 0 0
 
-componentKind :: Component -> ComponentKind
-componentKind component
-  | fromIntegral (componentUntraced component) > maximumUntracedInkFraction * fromIntegral (componentInk component) = RasterResidual
+componentKind :: Image PixelRGBA8 -> Component -> ComponentKind
+componentKind image component
+  | untraceable, Just _ <- strokeColor image component = ReconstructedStroke
+  | untraceable = RasterResidual
   | componentCovered component > 0
   , 2 * componentCovered component < maximumSmoothStrokeWidth * componentBoundary component
   , ComponentColor {} <- componentColor component =
       SmoothTraced
   | otherwise = PixelTraced
+  where
+    untraceable = fromIntegral (componentUntraced component) > maximumUntracedInkFraction * fromIntegral (componentInk component)
+
+-- | The single color of a narrow stroke of opaque ink, if the component is one.
+--
+-- Measured over samples at or above half the component's own peak alpha: a
+-- pen stroke narrower than a source pixel is narrow there whatever its peak,
+-- while a translucent mark stays wide and a faint smudge stays below the peak
+-- floor.
+strokeColor :: Image PixelRGBA8 -> Component -> Maybe (Word8, Word8, Word8)
+strokeColor image component
+  | peak < minimumReconstructionPeak = Nothing
+  | 2 * length significant >= maximumSmoothStrokeWidth * boundary = Nothing
+  | otherwise = case foldl' mergeComponentColor NoComponentColor (map (quantizedColor . pixelAtIndex image) significant) of
+      ComponentColor red green blue -> Just (red, green, blue)
+      _ -> Nothing
+  where
+    pixels = componentPixels component
+    peak = maximum (map (alphaIndex image) pixels)
+    half = (peak + 1) `div` 2
+    significant = filter ((>= half) . alphaIndex image) pixels
+    boundary = length (filter (any (not . isSignificant) . pixelEdgeNeighbors (imageWidth image)) significant)
+    isSignificant (x, y) = x >= 0 && y >= 0 && x < imageWidth image && y < imageHeight image && alphaIndex image (y * imageWidth image + x) >= half
 
 -- | Label 8-connected visible components in row-major discovery order.
 labelComponents :: Image PixelRGBA8 -> (Unboxed.Vector Int32, [Component])
@@ -289,23 +328,35 @@ addComponentPixel image index component =
     , componentInk = componentInk component + alpha
     , componentUntraced = componentUntraced component + (if alpha < fromIntegral minimumVectorLayerAlpha then alpha else 0)
     , componentCovered = componentCovered component + fromEnum covered
-    , componentBoundary = componentBoundary component + fromEnum (covered && any (not . isCovered) (edgeNeighbors x y))
-    , componentColor = if alpha < fromIntegral minimumVectorLayerAlpha then componentColor component else mergeColor (componentColor component)
+    , componentBoundary = componentBoundary component + fromEnum (covered && any (not . isCovered) (pixelEdgeNeighbors width index))
+    , componentColor =
+        if alpha < fromIntegral minimumVectorLayerAlpha
+          then componentColor component
+          else mergeComponentColor (componentColor component) (quantizedColor (pixelAtIndex image index))
     }
   where
     width = imageWidth image
-    (y, x) = index `divMod` width
     alpha = alphaIndex image index
     covered = alpha >= halfCoverageAlpha
     isCovered (neighborX, neighborY) =
       neighborX >= 0 && neighborX < width && neighborY >= 0 && neighborY < imageHeight image && alphaIndex image (neighborY * width + neighborX) >= halfCoverageAlpha
-    edgeNeighbors pointX pointY = [(pointX - 1, pointY), (pointX + 1, pointY), (pointX, pointY - 1), (pointX, pointY + 1)]
-    PixelRGBA8 red green blue _ = pixelAt image x y
-    pixelColor = ComponentColor (quantize 32 red) (quantize 32 green) (quantize 32 blue)
-    mergeColor NoComponentColor = pixelColor
-    mergeColor existing
-      | existing == pixelColor = existing
-      | otherwise = MixedComponentColors
+
+mergeComponentColor :: ComponentColor -> ComponentColor -> ComponentColor
+mergeComponentColor NoComponentColor color = color
+mergeComponentColor existing color
+  | existing == color = existing
+  | otherwise = MixedComponentColors
+
+quantizedColor :: PixelRGBA8 -> ComponentColor
+quantizedColor (PixelRGBA8 red green blue _) = ComponentColor (quantize 32 red) (quantize 32 green) (quantize 32 blue)
+
+pixelEdgeNeighbors :: Int -> Int -> [(Int, Int)]
+pixelEdgeNeighbors width index = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+  where
+    (y, x) = index `divMod` width
+
+pixelAtIndex :: Image PixelRGBA8 -> Int -> PixelRGBA8
+pixelAtIndex image index = let (y, x) = index `divMod` imageWidth image in pixelAt image x y
 
 alphaIndex :: Image PixelRGBA8 -> Int -> Int
 alphaIndex image index = fromIntegral (imageData image Storable.! (index * 4 + 3))
@@ -316,43 +367,73 @@ alphaIndex image index = fromIntegral (imageData image Storable.! (index * 4 + 3
 -- source weight instead of the dilation of the pixel tracer's alpha floor.
 -- Contours become Catmull-Rom cubic curves through the simplified points.
 traceSmoothImage :: Image PixelRGBA8 -> Either BuildError [VectorShape]
-traceSmoothImage image
-  | null shapes = Left (UnsupportedImage "smoothed artwork contains no visible shapes")
+traceSmoothImage image =
+  curveShapes image "smoothed artwork contains no visible shapes" $
+    [ ((red, green, blue), smoothContours image labels label component)
+    | (label, component) <- zip [1 ..] components
+    , ComponentColor red green blue <- [componentColor component]
+    ]
+  where
+    (labels, components) = labelComponents image
+
+-- | Redraw narrow sub-pixel strokes as crisp vector ink.
+--
+-- A stroke narrower than a source pixel has an uneven peak alpha along its
+-- length, so any single contour level either breaks or bloats it. Dividing the
+-- supersampled field by its local maximum brings every point of the stroke's
+-- ridge to about one, and the contour at 'reconstructionLevel' of that ridge
+-- follows the stroke continuously. The result is drawn as opaque ink.
+traceReconstructedImage :: Image PixelRGBA8 -> Either BuildError [VectorShape]
+traceReconstructedImage image =
+  curveShapes image "reconstructed artwork contains no visible shapes" $
+    [ (color, reconstructedContours image labels label component)
+    | (label, component) <- zip [1 ..] components
+    , Just color <- [strokeColor image component]
+    ]
+  where
+    (labels, components) = labelComponents image
+
+curveShapes :: Image PixelRGBA8 -> Text -> [((Word8, Word8, Word8), [[GridPoint]])] -> Either BuildError [VectorShape]
+curveShapes image emptyMessage traced
+  | null shapes = Left (UnsupportedImage emptyMessage)
   | pointCount > maximumVectorPoints = Left (UnsupportedImage "vector artwork exceeds the point complexity limit")
   | otherwise = Right shapes
   where
-    (labels, components) = labelComponents image
-    traced = [(component, smoothContours image labels label component) | (label, component) <- zip [1 ..] components]
-    shapes = [shape | (component, contours) <- traced, Just shape <- [smoothShape image component contours]]
+    shapes =
+      [ VectorShape
+          { vectorPath = VectorPath (curvePathText (imageWidth image) (imageHeight image) contours)
+          , vectorColor = styleColor (Style red green blue 255)
+          , vectorOpacity = 1
+          }
+      | ((red, green, blue), contours@(_ : _)) <- traced
+      ]
     pointCount = sum [length contour | (_, contours) <- traced, contour <- contours]
-
-smoothShape :: Image PixelRGBA8 -> Component -> [[GridPoint]] -> Maybe VectorShape
-smoothShape image component contours = case (componentColor component, contours) of
-  (_, []) -> Nothing
-  (ComponentColor red green blue, _) ->
-    Just
-      VectorShape
-        { vectorPath = VectorPath (curvePathText (imageWidth image) (imageHeight image) contours)
-        , vectorColor = styleColor (Style red green blue 255)
-        , vectorOpacity = 1
-        }
-  _ -> Nothing
 
 smoothContours :: Image PixelRGBA8 -> Unboxed.Vector Int32 -> Int32 -> Component -> [[GridPoint]]
 smoothContours image labels label component = traceContours edges
   where
     width = imageWidth image
-    height = imageHeight image
-    tiles = map (fieldTile componentAlpha) (componentTiles width component)
-    componentAlpha x y
-      | x < 0 || y < 0 || x >= width || y >= height = 0
-      | labels Unboxed.! index /= label = 0
-      | otherwise = fromIntegral (alphaIndex image index)
-      where
-        index = y * width + x
+    tiles = map (fieldTile (componentAlpha image labels label)) (componentTiles width component)
     targetSamples = componentInk component * supersampling * supersampling `div` 255
     level = areaLevel targetSamples (sampleHistogram tiles)
-    edges = Set.unions (map (tileEdges width height level) tiles)
+    edges = Set.unions (map (tileEdges width (imageHeight image) level) tiles)
+
+reconstructedContours :: Image PixelRGBA8 -> Unboxed.Vector Int32 -> Int32 -> Component -> [[GridPoint]]
+reconstructedContours image labels label component = traceContours edges
+  where
+    width = imageWidth image
+    tiles = map (normalizedTile (componentAlpha image labels label)) (componentTiles width component)
+    edges = Set.unions (map (tileEdges width (imageHeight image) reconstructionLevel) tiles)
+
+-- | Alpha of one labeled component, zero elsewhere and outside the image.
+componentAlpha :: Image PixelRGBA8 -> Unboxed.Vector Int32 -> Int32 -> Int -> Int -> Double
+componentAlpha image labels label x y
+  | x < 0 || y < 0 || x >= width || y >= imageHeight image = 0
+  | labels Unboxed.! index /= label = 0
+  | otherwise = fromIntegral (alphaIndex image index)
+  where
+    width = imageWidth image
+    index = y * width + x
 
 data FieldTile = FieldTile Int Int (Unboxed.Vector Double)
 
@@ -382,6 +463,30 @@ fieldTile alphaAt (tileX, tileY) = FieldTile originX originY (Unboxed.generate (
     sample offset =
       let (row, column) = offset `divMod` tileSide
        in bicubicSample alphaAt (originX + column) (originY + row)
+
+-- | A field tile divided by the maximum of its square neighborhood.
+--
+-- The tile is evaluated with a margin of 'normalizationRadius' samples so each
+-- inner sample sees its whole neighborhood and shared tile borders agree.
+-- Samples whose neighborhood peak is below 'minimumNormalizedAlpha' stay zero.
+normalizedTile :: (Int -> Int -> Double) -> (Int, Int) -> FieldTile
+normalizedTile alphaAt (tileX, tileY) = FieldTile originX originY (Unboxed.generate (tileSide * tileSide) normalized)
+  where
+    originX = tileX * smoothTileSize * supersampling
+    originY = tileY * smoothTileSize * supersampling
+    radius = normalizationRadius
+    side = tileSide + 2 * radius
+    extended = Unboxed.generate (side * side) $ \offset ->
+      let (row, column) = offset `divMod` side
+       in max 0 (bicubicSample alphaAt (originX - radius + column) (originY - radius + row))
+    rowMaxima = Unboxed.generate (side * side) $ \offset ->
+      let (row, column) = offset `divMod` side
+       in maximum [extended Unboxed.! (row * side + neighbor) | neighbor <- [max 0 (column - radius) .. min (side - 1) (column + radius)]]
+    normalized offset =
+      let (row, column) = offset `divMod` tileSide
+          value = extended Unboxed.! ((row + radius) * side + column + radius)
+          peak = maximum [rowMaxima Unboxed.! ((row + neighbor) * side + column + radius) | neighbor <- [0 .. 2 * radius]]
+       in if peak < minimumNormalizedAlpha then 0 else value / peak
 
 -- | Keys bicubic interpolation of source samples at a supersampled position.
 bicubicSample :: (Int -> Int -> Double) -> Int -> Int -> Double

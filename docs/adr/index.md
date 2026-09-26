@@ -13,3 +13,4 @@
 - [ADR 0011: Bounded zoom-detail evidence](/adr/0011-bounded-zoom-detail-evidence.md) - Accepted. Supplement whole-board gates with enlarged handwriting crops.
 - [ADR 0012: Component raster residual](/adr/0012-component-raster-residual.md) - Accepted. Keep untraceable connected components of traced artwork as source raster.
 - [ADR 0013: Supersampled thin-stroke tracing](/adr/0013-supersampled-thin-stroke-tracing.md) - Accepted. Trace thin single-color components at source ink area as bounded cubic curves.
+- [ADR 0014: Reconstruct sub-pixel pen strokes](/adr/0014-reconstruct-sub-pixel-pen-strokes.md) - Accepted. Redraw narrow single-color untraceable strokes from a locally normalized field as opaque ink.

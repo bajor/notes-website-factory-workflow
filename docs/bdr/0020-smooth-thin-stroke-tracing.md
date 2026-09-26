@@ -2,7 +2,8 @@
 type: BDR
 title: Smooth thin-stroke tracing
 description: Trace thin single-color strokes at their source weight as smooth curves, beside pixel tracing and the raster residual.
-status: Accepted
+status: Superseded
+superseded_by: "0021"
 supersedes: "0019"
 timestamp: 2026-09-26
 ---

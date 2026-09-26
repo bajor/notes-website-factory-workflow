@@ -16,3 +16,4 @@
 - [Issue 0014: Preserve local traced detail](/issues/0014-preserve-local-traced-detail.md) - Done. Repair localized pixelation and retain zoomed visual evidence.
 - [Issue 0015: Raster residual for untraceable strokes](/issues/0015-raster-residual-for-untraceable-strokes.md) - Done. Stop sub-pixel handwriting from fragmenting and redeploy both consumers.
 - [Issue 0016: Smooth thin-stroke tracing](/issues/0016-smooth-thin-stroke-tracing.md) - Done. Replace bold, blocky low-resolution lettering with weight-true curves and redeploy both consumers.
+- [Issue 0017: Reconstruct sub-pixel strokes](/issues/0017-reconstruct-sub-pixel-strokes.md) - Done. Make soft sub-pixel handwriting crisp at high zoom and redeploy both consumers.
