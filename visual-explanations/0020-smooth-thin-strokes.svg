@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="600" viewBox="0 0 960 600" font-family="Helvetica, Arial, sans-serif" font-size="14">
+  <title>Smooth thin-stroke tracing</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#444"/>
+    </marker>
+  </defs>
+  <rect width="960" height="600" fill="#ffffff"/>
+
+  <text x="240" y="36" text-anchor="middle" font-size="18" font-weight="bold">Before: two outcomes</text>
+  <text x="720" y="36" text-anchor="middle" font-size="18" font-weight="bold">After: three outcomes</text>
+  <line x1="480" y1="20" x2="480" y2="580" stroke="#bbb" stroke-dasharray="6 4"/>
+
+  <!-- Before -->
+  <g stroke="#444" stroke-width="1.5" fill="none">
+    <rect x="90" y="64" width="300" height="60" rx="8" fill="#fff7e0"/>
+    <rect x="40" y="190" width="190" height="84" rx="8" fill="#eaf7ea"/>
+    <rect x="250" y="190" width="190" height="84" rx="8" fill="#fdecea"/>
+    <path d="M200 124 L140 186" marker-end="url(#arrow)"/>
+    <path d="M280 124 L340 186" marker-end="url(#arrow)"/>
+  </g>
+  <text x="240" y="90" text-anchor="middle">Component partition</text>
+  <text x="240" y="110" text-anchor="middle" font-size="12" fill="#555">Factory.Vectorize</text>
+  <text x="135" y="216" text-anchor="middle">Raster residual</text>
+  <text x="135" y="236" text-anchor="middle" font-size="12" fill="#555">ink below alpha 88 &gt; 25%</text>
+  <text x="345" y="216" text-anchor="middle">Pixel trace</text>
+  <text x="345" y="236" text-anchor="middle" font-size="12" fill="#555">edge at alpha 95.5 (~37%)</text>
+  <text x="345" y="254" text-anchor="middle" font-size="12" fill="#a33">thin lettering: bold, faceted</text>
+  <g transform="translate(290 320)">
+    <text x="0" y="0" font-size="12" fill="#555">Thin stroke at 45 ppi</text>
+    <path d="M0 30 L14 12 L32 16 L44 34 L60 26 L78 30" stroke="#000" stroke-width="7" stroke-linejoin="miter" fill="none"/>
+  </g>
+
+  <!-- After -->
+  <g stroke="#444" stroke-width="1.5" fill="none">
+    <rect x="570" y="64" width="300" height="60" rx="8" fill="#fff7e0"/>
+    <rect x="500" y="190" width="140" height="84" rx="8" fill="#eaf7ea"/>
+    <rect x="655" y="190" width="140" height="84" rx="8" fill="#eef4ff"/>
+    <rect x="810" y="190" width="140" height="84" rx="8" fill="#f3f3f3"/>
+    <rect x="570" y="340" width="300" height="72" rx="8" fill="#f3f3f3"/>
+    <path d="M680 124 L580 186" marker-end="url(#arrow)"/>
+    <path d="M720 124 L725 186" marker-end="url(#arrow)"/>
+    <path d="M760 124 L870 186" marker-end="url(#arrow)"/>
+    <path d="M725 274 L725 336" marker-end="url(#arrow)"/>
+    <path d="M870 274 L790 336" marker-end="url(#arrow)"/>
+    <path d="M570 274 L650 336" marker-end="url(#arrow)"/>
+  </g>
+  <text x="720" y="90" text-anchor="middle">Component partition</text>
+  <text x="720" y="110" text-anchor="middle" font-size="12" fill="#555">Factory.Vectorize</text>
+  <text x="570" y="216" text-anchor="middle">Raster residual</text>
+  <text x="570" y="236" text-anchor="middle" font-size="12" fill="#555">unchanged</text>
+  <text x="725" y="216" text-anchor="middle">Smooth trace</text>
+  <text x="725" y="234" text-anchor="middle" font-size="12" fill="#555">thin, single color</text>
+  <text x="725" y="250" text-anchor="middle" font-size="12" fill="#555">4x bicubic field,</text>
+  <text x="725" y="266" text-anchor="middle" font-size="12" fill="#555">ink-area level</text>
+  <text x="880" y="216" text-anchor="middle">Pixel trace</text>
+  <text x="880" y="236" text-anchor="middle" font-size="12" fill="#555">thick or multicolor</text>
+  <text x="880" y="252" text-anchor="middle" font-size="12" fill="#555">byte-identical</text>
+  <text x="720" y="366" text-anchor="middle">One vector node, then residual image</text>
+  <text x="720" y="386" text-anchor="middle" font-size="12" fill="#555">Factory.Pdf / Interpreter: same placement</text>
+  <text x="720" y="402" text-anchor="middle" font-size="12" fill="#555">cubic C segments; schema and runtime unchanged</text>
+
+  <g transform="translate(560 450)">
+    <text x="0" y="0" font-size="12" fill="#555">Smooth trace: weight-true bounded cubic curves</text>
+    <path d="M0 40 C8 26 12 18 18 18 C26 18 30 34 42 38 C54 42 60 30 70 30 C80 30 86 36 96 36" stroke="#000" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <circle cx="112" cy="36" r="5" fill="#000"/>
+    <path d="M96 36 L108 36" stroke="#000" stroke-width="3"/>
+    <text x="130" y="40" font-size="12" fill="#555">handles &#8804; 1/3 of their segment,</text>
+    <text x="130" y="56" font-size="12" fill="#555">so dots at line ends stay solid</text>
+  </g>
+</svg>

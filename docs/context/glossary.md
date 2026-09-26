@@ -2,7 +2,7 @@
 type: Context
 title: Project glossary
 description: Definitions for PDF rendering, workflow reuse, artifacts, and evaluation.
-timestamp: 2026-09-25
+timestamp: 2026-09-26
 ---
 # Glossary
 
@@ -25,6 +25,10 @@ A scene node containing normalized, closed SVG paths traced from an eligible emb
 ## Untraceable Component
 
 An 8-connected group of nonzero-alpha pixels in a traceable image whose alpha below `88` exceeds a quarter of its total alpha. Such strokes are narrower than one source pixel and cannot be traced without losing or distorting them.
+
+## Thin Component
+
+A traceable 8-connected component whose count of pixels at alpha `128` or above, doubled, is less than three times the count of those pixels bordering lower alpha. It identifies strokes up to about three source pixels wide. A single-color thin component is smooth-traced: from a supersampled bicubic field, at the contour level that preserves its ink area, as closed cubic curves.
 
 ## Raster Residual
 

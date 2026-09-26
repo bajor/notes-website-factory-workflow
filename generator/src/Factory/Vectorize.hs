@@ -9,6 +9,7 @@ module Factory.Vectorize
   , opaqueHighlighter
   , partitionArtwork
   , traceImage
+  , traceSmoothImage
   ) where
 
 import Codec.Picture (Image, PixelRGBA8 (PixelRGBA8), generateImage, imageData, imageHeight, imageWidth, pixelAt)
@@ -16,7 +17,7 @@ import Control.Monad (foldM)
 import Control.Monad.ST (runST)
 import Data.ByteString (ByteString)
 import Data.Int (Int32)
-import Data.List (foldl', maximumBy)
+import Data.List (foldl', maximumBy, zip4)
 import Data.Map.Strict (Map)
 import Data.Maybe (catMaybes)
 import Data.Ord (comparing)
@@ -29,6 +30,7 @@ import qualified Data.ByteString as ByteString
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import qualified Data.Text as Text
+import qualified Data.Vector as Boxed
 import qualified Data.Vector.Storable as Storable
 import qualified Data.Vector.Unboxed as Unboxed
 import qualified Data.Vector.Unboxed.Mutable as MUnboxed
@@ -36,13 +38,30 @@ import qualified Data.Vector.Unboxed.Mutable as MUnboxed
 data ImageDisposition = PreserveRaster | PreserveLowAlphaRaster | TraceAsVector
   deriving stock (Eq, Show)
 
--- | Traceable artwork split by connected component. Mixed artwork carries the
--- traceable components first and the untraceable raster residual second.
-data ArtworkPartition
-  = TraceableArtwork (Image PixelRGBA8)
-  | UntraceableArtwork (Image PixelRGBA8)
-  | MixedArtwork (Image PixelRGBA8) (Image PixelRGBA8)
+-- | Traceable artwork split by connected component. Each part holds only its
+-- components and is absent when it has none; a part holding every component
+-- is the unchanged source image.
+data ArtworkPartition = ArtworkPartition
+  { tracedComponents :: Maybe (Image PixelRGBA8)
+  , smoothedComponents :: Maybe (Image PixelRGBA8)
+  , residualComponents :: Maybe (Image PixelRGBA8)
+  }
   deriving stock (Eq)
+
+data ComponentKind = PixelTraced | SmoothTraced | RasterResidual
+  deriving stock (Eq)
+
+data ComponentColor = NoComponentColor | ComponentColor Word8 Word8 Word8 | MixedComponentColors
+  deriving stock (Eq)
+
+data Component = Component
+  { componentPixels :: ![Int]
+  , componentInk :: !Int
+  , componentUntraced :: !Int
+  , componentCovered :: !Int
+  , componentBoundary :: !Int
+  , componentColor :: !ComponentColor
+  }
 
 data Style = Style Word8 Word8 Word8 Word8
   deriving stock (Eq, Ord, Show)
@@ -94,6 +113,27 @@ minimumHighlighterChroma = 28
 
 maximumUntracedInkFraction :: Double
 maximumUntracedInkFraction = 0.25
+
+halfCoverageAlpha :: Int
+halfCoverageAlpha = 128
+
+maximumSmoothStrokeWidth :: Int
+maximumSmoothStrokeWidth = 3
+
+supersampling :: Int
+supersampling = 4
+
+smoothTileSize :: Int
+smoothTileSize = 16
+
+histogramBins :: Int
+histogramBins = 5120
+
+histogramBinWidth :: Double
+histogramBinWidth = 0.0625
+
+minimumCornerCosine :: Double
+minimumCornerCosine = -0.5
 
 classifyImage :: Maybe ByteString -> Either BuildError ImageDisposition
 classifyImage Nothing = Right PreserveRaster
@@ -155,61 +195,73 @@ addPixel x y (PixelRGBA8 red green blue alpha) profile =
   where
     channels = map fromIntegral [red, green, blue] :: [Int]
 
--- | Keep components as raster when tracing would drop too much of their ink.
+-- | Split traceable artwork by how each connected component can be drawn.
 --
 -- Tracing retains only samples at or above 'minimumVectorLayerAlpha'. Strokes
 -- narrower than a source pixel keep most of their ink below that alpha and
--- break apart when traced. Components are 8-connected, so no contour cell
--- spans two of them and removing one never changes another's trace.
+-- break apart when traced, so they stay raster. Strokes up to about three
+-- pixels wide trace coarsely at pixel resolution, so single-color ones are
+-- traced from a supersampled field instead. Components are 8-connected, so no
+-- contour cell spans two of them and separating one never changes another's
+-- trace.
 partitionArtwork :: Image PixelRGBA8 -> ArtworkPartition
 partitionArtwork image
-  | not (Unboxed.or untraceable) = TraceableArtwork image
-  | Unboxed.and untraceable = UntraceableArtwork image
-  | otherwise = MixedArtwork (selectComponents not) (selectComponents id)
+  | all (== PixelTraced) kinds = ArtworkPartition (Just image) Nothing Nothing
+  | all (== RasterResidual) kinds = ArtworkPartition Nothing Nothing (Just image)
+  | otherwise = ArtworkPartition (selectComponents PixelTraced) (selectComponents SmoothTraced) (selectComponents RasterResidual)
   where
-    (labels, untraceable) = componentTraceability image
+    (labels, components) = labelComponents image
+    kinds = Boxed.fromList (map componentKind components)
     width = imageWidth image
-    selectComponents keep = generateImage pixel width (imageHeight image)
+    selectComponents kind
+      | kind `notElem` kinds = Nothing
+      | otherwise = Just (generateImage pixel width (imageHeight image))
       where
         pixel x y = case labels Unboxed.! (y * width + x) of
           0 -> PixelRGBA8 0 0 0 0
           label
-            | keep (untraceable Unboxed.! (fromIntegral label - 1)) -> pixelAt image x y
+            | kinds Boxed.! (fromIntegral label - 1) == kind -> pixelAt image x y
             | otherwise -> PixelRGBA8 0 0 0 0
 
--- | Label 8-connected visible components and flag those that are untraceable.
-componentTraceability :: Image PixelRGBA8 -> (Unboxed.Vector Int32, Unboxed.Vector Bool)
-componentTraceability image = runST $ do
+componentKind :: Component -> ComponentKind
+componentKind component
+  | fromIntegral (componentUntraced component) > maximumUntracedInkFraction * fromIntegral (componentInk component) = RasterResidual
+  | componentCovered component > 0
+  , 2 * componentCovered component < maximumSmoothStrokeWidth * componentBoundary component
+  , ComponentColor {} <- componentColor component =
+      SmoothTraced
+  | otherwise = PixelTraced
+
+-- | Label 8-connected visible components in row-major discovery order.
+labelComponents :: Image PixelRGBA8 -> (Unboxed.Vector Int32, [Component])
+labelComponents image = runST $ do
   labels <- MUnboxed.replicate pixelCount 0
-  flags <- scan labels 0 0 []
+  components <- scan labels 0 0 []
   frozen <- Unboxed.unsafeFreeze labels
-  pure (frozen, Unboxed.fromList (reverse flags))
+  pure (frozen, reverse components)
   where
     width = imageWidth image
     height = imageHeight image
     pixelCount = width * height
-    alphaAt index = fromIntegral (imageData image Storable.! (index * 4 + 3)) :: Int
-    scan labels !index !count flags
-      | index == pixelCount = pure flags
-      | alphaAt index == 0 = scan labels (index + 1) count flags
+    scan labels !index !count found
+      | index == pixelCount = pure found
+      | alphaIndex image index == 0 = scan labels (index + 1) count found
       | otherwise = do
           current <- MUnboxed.read labels index
           if current /= 0
-            then scan labels (index + 1) count flags
+            then scan labels (index + 1) count found
             else do
               let label = count + 1
               MUnboxed.write labels index label
-              (ink, untraced) <- fill labels label [index] 0 0
-              scan labels (index + 1) label (isUntraceable ink untraced : flags)
-    fill labels label stack !ink !untraced = case stack of
-      [] -> pure (ink, untraced)
+              component <- fill labels label [index] emptyComponent
+              scan labels (index + 1) label (component : found)
+    fill labels label stack !component = case stack of
+      [] -> pure component
       index : rest -> do
-        let alpha = alphaAt index
-            untracedAlpha = if alpha < fromIntegral minimumVectorLayerAlpha then alpha else 0
         next <- foldM (claim labels label) rest (neighbors index)
-        fill labels label next (ink + alpha) (untraced + untracedAlpha)
+        fill labels label next (addComponentPixel image index component)
     claim labels label stack neighbor
-      | alphaAt neighbor == 0 = pure stack
+      | alphaIndex image neighbor == 0 = pure stack
       | otherwise = do
           current <- MUnboxed.read labels neighbor
           if current /= 0
@@ -227,8 +279,186 @@ componentTraceability image = runST $ do
       where
         (y, x) = index `divMod` width
 
-isUntraceable :: Int -> Int -> Bool
-isUntraceable ink untraced = fromIntegral untraced > maximumUntracedInkFraction * fromIntegral ink
+emptyComponent :: Component
+emptyComponent = Component [] 0 0 0 0 NoComponentColor
+
+addComponentPixel :: Image PixelRGBA8 -> Int -> Component -> Component
+addComponentPixel image index component =
+  Component
+    { componentPixels = index : componentPixels component
+    , componentInk = componentInk component + alpha
+    , componentUntraced = componentUntraced component + (if alpha < fromIntegral minimumVectorLayerAlpha then alpha else 0)
+    , componentCovered = componentCovered component + fromEnum covered
+    , componentBoundary = componentBoundary component + fromEnum (covered && any (not . isCovered) (edgeNeighbors x y))
+    , componentColor = if alpha < fromIntegral minimumVectorLayerAlpha then componentColor component else mergeColor (componentColor component)
+    }
+  where
+    width = imageWidth image
+    (y, x) = index `divMod` width
+    alpha = alphaIndex image index
+    covered = alpha >= halfCoverageAlpha
+    isCovered (neighborX, neighborY) =
+      neighborX >= 0 && neighborX < width && neighborY >= 0 && neighborY < imageHeight image && alphaIndex image (neighborY * width + neighborX) >= halfCoverageAlpha
+    edgeNeighbors pointX pointY = [(pointX - 1, pointY), (pointX + 1, pointY), (pointX, pointY - 1), (pointX, pointY + 1)]
+    PixelRGBA8 red green blue _ = pixelAt image x y
+    pixelColor = ComponentColor (quantize 32 red) (quantize 32 green) (quantize 32 blue)
+    mergeColor NoComponentColor = pixelColor
+    mergeColor existing
+      | existing == pixelColor = existing
+      | otherwise = MixedComponentColors
+
+alphaIndex :: Image PixelRGBA8 -> Int -> Int
+alphaIndex image index = fromIntegral (imageData image Storable.! (index * 4 + 3))
+
+-- | Trace single-color thin components from a bicubic supersampled field.
+--
+-- Each component's contour level preserves its ink area, so strokes keep the
+-- source weight instead of the dilation of the pixel tracer's alpha floor.
+-- Contours become Catmull-Rom cubic curves through the simplified points.
+traceSmoothImage :: Image PixelRGBA8 -> Either BuildError [VectorShape]
+traceSmoothImage image
+  | null shapes = Left (UnsupportedImage "smoothed artwork contains no visible shapes")
+  | pointCount > maximumVectorPoints = Left (UnsupportedImage "vector artwork exceeds the point complexity limit")
+  | otherwise = Right shapes
+  where
+    (labels, components) = labelComponents image
+    traced = [(component, smoothContours image labels label component) | (label, component) <- zip [1 ..] components]
+    shapes = [shape | (component, contours) <- traced, Just shape <- [smoothShape image component contours]]
+    pointCount = sum [length contour | (_, contours) <- traced, contour <- contours]
+
+smoothShape :: Image PixelRGBA8 -> Component -> [[GridPoint]] -> Maybe VectorShape
+smoothShape image component contours = case (componentColor component, contours) of
+  (_, []) -> Nothing
+  (ComponentColor red green blue, _) ->
+    Just
+      VectorShape
+        { vectorPath = VectorPath (curvePathText (imageWidth image) (imageHeight image) contours)
+        , vectorColor = styleColor (Style red green blue 255)
+        , vectorOpacity = 1
+        }
+  _ -> Nothing
+
+smoothContours :: Image PixelRGBA8 -> Unboxed.Vector Int32 -> Int32 -> Component -> [[GridPoint]]
+smoothContours image labels label component = traceContours edges
+  where
+    width = imageWidth image
+    height = imageHeight image
+    tiles = map (fieldTile componentAlpha) (componentTiles width component)
+    componentAlpha x y
+      | x < 0 || y < 0 || x >= width || y >= height = 0
+      | labels Unboxed.! index /= label = 0
+      | otherwise = fromIntegral (alphaIndex image index)
+      where
+        index = y * width + x
+    targetSamples = componentInk component * supersampling * supersampling `div` 255
+    level = areaLevel targetSamples (sampleHistogram tiles)
+    edges = Set.unions (map (tileEdges width height level) tiles)
+
+data FieldTile = FieldTile Int Int (Unboxed.Vector Double)
+
+tileSide :: Int
+tileSide = smoothTileSize * supersampling + 1
+
+-- | Tiles within the bicubic support of a component; other tiles are zero.
+componentTiles :: Int -> Component -> [(Int, Int)]
+componentTiles width component =
+  Set.toAscList
+    ( Set.fromList
+        [ (tileX, tileY)
+        | index <- componentPixels component
+        , let (y, x) = index `divMod` width
+        , tileY <- [(y - tileMargin) `div` smoothTileSize .. (y + tileMargin) `div` smoothTileSize]
+        , tileX <- [(x - tileMargin) `div` smoothTileSize .. (x + tileMargin) `div` smoothTileSize]
+        ]
+    )
+  where
+    tileMargin = 3
+
+fieldTile :: (Int -> Int -> Double) -> (Int, Int) -> FieldTile
+fieldTile alphaAt (tileX, tileY) = FieldTile originX originY (Unboxed.generate (tileSide * tileSide) sample)
+  where
+    originX = tileX * smoothTileSize * supersampling
+    originY = tileY * smoothTileSize * supersampling
+    sample offset =
+      let (row, column) = offset `divMod` tileSide
+       in bicubicSample alphaAt (originX + column) (originY + row)
+
+-- | Keys bicubic interpolation of source samples at a supersampled position.
+bicubicSample :: (Int -> Int -> Double) -> Int -> Int -> Double
+bicubicSample alphaAt sampleX sampleY =
+  sum
+    [ cubicWeight (u - fromIntegral x) * cubicWeight (v - fromIntegral y) * alphaAt x y
+    | y <- [baseY - 1 .. baseY + 2]
+    , x <- [baseX - 1 .. baseX + 2]
+    ]
+  where
+    u = supersampledCenter sampleX
+    v = supersampledCenter sampleY
+    baseX = floor u
+    baseY = floor v
+
+-- | Source sample-index coordinate of a supersampled sample center.
+supersampledCenter :: Int -> Double
+supersampledCenter sample = (fromIntegral sample + 0.5) / fromIntegral supersampling - 0.5
+
+cubicWeight :: Double -> Double
+cubicWeight offset
+  | distance <= 1 = (1.5 * distance - 2.5) * distance * distance + 1
+  | distance < 2 = ((-0.5 * distance + 2.5) * distance - 4) * distance + 2
+  | otherwise = 0
+  where
+    distance = abs offset
+
+sampleHistogram :: [FieldTile] -> Unboxed.Vector Int
+sampleHistogram tiles =
+  Unboxed.accum (+) (Unboxed.replicate histogramBins 0) [(bin value, 1) | FieldTile _ _ values <- tiles, (offset, value) <- zip [0 ..] (Unboxed.toList values), owned offset, value > 0]
+  where
+    owned offset = let (row, column) = offset `divMod` tileSide in row < tileSide - 1 && column < tileSide - 1
+    bin value = min (histogramBins - 1) (floor (value / histogramBinWidth))
+
+-- | The lowest histogram level whose covered sample count reaches the target.
+areaLevel :: Int -> Unboxed.Vector Int -> Double
+areaLevel target histogram = go (Unboxed.length histogram - 1) 0
+  where
+    go bin covered
+      | bin <= 0 = histogramBinWidth
+      | reached >= target = fromIntegral bin * histogramBinWidth
+      | otherwise = go (bin - 1) reached
+      where
+        reached = covered + histogram Unboxed.! bin
+
+tileEdges :: Int -> Int -> Double -> FieldTile -> Set Edge
+tileEdges width height level (FieldTile originX originY values) =
+  Set.fromList [edge | row <- [0 .. tileSide - 2], column <- [0 .. tileSide - 2], edge <- cellEdges column row]
+  where
+    valueAt column row = values Unboxed.! (row * tileSide + column)
+    cellEdges column row =
+      [ canonicalEdge start end
+      | (firstEdge, secondEdge) <- segmentsFor mask
+      , let start = edgePoint firstEdge
+            end = edgePoint secondEdge
+      , start /= end
+      ]
+      where
+        topLeft = valueAt column row
+        topRight = valueAt (column + 1) row
+        bottomRight = valueAt (column + 1) (row + 1)
+        bottomLeft = valueAt column (row + 1)
+        bit value weight = if value >= level then weight else 0
+        mask = bit topLeft 1 + bit topRight 2 + bit bottomRight 4 + bit bottomLeft 8
+        edgePoint edgeNumber = case edgeNumber of
+          0 -> crossing column row (column + 1) row topLeft topRight
+          1 -> crossing (column + 1) row (column + 1) (row + 1) topRight bottomRight
+          2 -> crossing column (row + 1) (column + 1) (row + 1) bottomLeft bottomRight
+          _ -> crossing column row column (row + 1) topLeft bottomLeft
+    crossing startColumn startRow endColumn endRow startValue endValue =
+      let factor = (level - startValue) / (endValue - startValue)
+          ContourPoint startX startY = samplePoint startColumn startRow
+          ContourPoint endX endY = samplePoint endColumn endRow
+       in clampToImage (ContourPoint (startX + factor * (endX - startX)) (startY + factor * (endY - startY)))
+    samplePoint column row = ContourPoint (sampleEdge (originX + column)) (sampleEdge (originY + row))
+    sampleEdge sample = (fromIntegral sample + 0.5) / fromIntegral supersampling
+    clampToImage (ContourPoint x y) = ContourPoint (max 0 (min (fromIntegral width) x)) (max 0 (min (fromIntegral height) y))
 
 traceImage :: Image PixelRGBA8 -> Either BuildError [VectorShape]
 traceImage image
@@ -464,6 +694,46 @@ pathText width height = Text.intercalate " " . map contourText
     contourText [] = ""
     contourText (point : rest) = "M" <> pointText point <> foldMap (("L" <>) . pointText) rest <> "Z"
     pointText (ContourPoint x y) = decimal width (x / fromIntegral width) <> "," <> decimal height (y / fromIntegral height)
+
+-- | Closed cubic curves through each contour's points.
+--
+-- Each point's tangent follows its neighbors, as in a Catmull-Rom spline, but
+-- handles reach only a third of their own segment so short features beside
+-- long straight runs cannot loop. Turns sharper than 'minimumCornerCosine'
+-- remain corners.
+curvePathText :: Int -> Int -> [[GridPoint]] -> Text
+curvePathText width height = Text.intercalate " " . map contourText
+  where
+    contourText points@(first : _ : _ : _) =
+      "M" <> pointText first <> foldMap segmentText (zip4 points (rotate 1 points) tangents (rotate 1 tangents)) <> "Z"
+      where
+        tangents = zipWith3 tangentAt (rotate (-1) points) points (rotate 1 points)
+    contourText points = pathText width height [points]
+    segmentText (start, end, startTangent, endTangent) =
+      "C" <> pointText (handle start startTangent reach) <> " " <> pointText (handle end endTangent (negate reach)) <> " " <> pointText end
+      where
+        reach = sqrt (distanceSquared start end) / 3
+    rotate steps points = let count = length points in take count (drop (steps `mod` count) (cycle points))
+    pointText (ContourPoint x y) = decimal width (x / fromIntegral width) <> "," <> decimal height (y / fromIntegral height)
+
+data Tangent = Corner | Direction Double Double
+
+tangentAt :: GridPoint -> GridPoint -> GridPoint -> Tangent
+tangentAt previous current next = case (unitVector previous current, unitVector current next, unitVector previous next) of
+  (Just (inX, inY), Just (outX, outY), Just (directionX, directionY))
+    | inX * outX + inY * outY >= minimumCornerCosine -> Direction directionX directionY
+  _ -> Corner
+
+unitVector :: GridPoint -> GridPoint -> Maybe (Double, Double)
+unitVector start@(ContourPoint startX startY) end@(ContourPoint endX endY)
+  | size == 0 = Nothing
+  | otherwise = Just ((endX - startX) / size, (endY - startY) / size)
+  where
+    size = sqrt (distanceSquared start end)
+
+handle :: GridPoint -> Tangent -> Double -> GridPoint
+handle point Corner _ = point
+handle (ContourPoint x y) (Direction directionX directionY) reach = ContourPoint (x + directionX * reach) (y + directionY * reach)
 
 decimal :: Int -> Double -> Text
 decimal extent value = trimDecimal (Text.pack (showFFloat (Just precision) value ""))
