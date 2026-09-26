@@ -2,7 +2,8 @@
 type: BDR
 title: Raster residual for untraceable strokes
 description: Keep traced artwork components as source raster when tracing would drop most of their ink.
-status: Accepted
+status: Superseded
+superseded_by: "0020"
 timestamp: 2026-09-25
 ---
 # Raster Residual for Untraceable Strokes

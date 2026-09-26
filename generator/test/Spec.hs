@@ -13,7 +13,7 @@ import Factory.Interpreter (ColorSpaceResource (SupportedColorSpace, Unsupported
 import Factory.Pipeline (outputCompanionPaths, validateOutputPath)
 import Factory.Pdf (classifyUrl, rejectDecode, rgbaImage)
 import Factory.Site (renderIndexTemplate, validateScene)
-import Factory.Vectorize (ArtworkPartition (..), ImageDisposition (..), classifyImage, opaqueHighlighter, partitionArtwork, traceImage)
+import Factory.Vectorize (ArtworkPartition (..), ImageDisposition (..), classifyImage, opaqueHighlighter, partitionArtwork, traceImage, traceSmoothImage)
 import Pdf.Content (Op (..), Operator)
 import Pdf.Core (Object (Array, Name, Number))
 import Test.Tasty (TestTree, defaultMain, testGroup)
@@ -232,26 +232,55 @@ vectorizationTests =
           Right [leftShape, rightShape] ->
             assertBool ("both styles use the source boundary: " <> show [vectorPath leftShape, vectorPath rightShape]) (Text.isInfixOf "0.5" (unVectorPath (vectorPath leftShape)) && Text.isInfixOf "0.5" (unVectorPath (vectorPath rightShape)))
           result -> assertFailure ("unexpected trace result: " <> show result)
-    , testCase "fully traceable artwork is partitioned unchanged" $
-        assertBool "artwork stays whole vector input" (partitionArtwork solidVectorImage == TraceableArtwork solidVectorImage)
+    , testCase "thick artwork is partitioned unchanged for pixel tracing" $
+        assertBool "artwork stays whole pixel-tracing input" (partitionArtwork thickBlockImage == ArtworkPartition (Just thickBlockImage) Nothing Nothing)
     , testCase "sub-pixel strokes remain raster" $
-        assertBool "stroke stays whole raster input" (partitionArtwork thinStrokeImage == UntraceableArtwork thinStrokeImage)
+        assertBool "stroke stays whole raster input" (partitionArtwork thinStrokeImage == ArtworkPartition Nothing Nothing (Just thinStrokeImage))
     , testCase "mixed artwork separates untraceable strokes from traceable components" $
         case partitionArtwork strokeBesideBlockImage of
-          MixedArtwork traceable residual ->
-            map (\image -> [pixelAt image 1 1, pixelAt image 5 1]) [traceable, residual]
+          ArtworkPartition (Just traced) Nothing (Just residual) ->
+            map (\image -> [pixelAt image 1 1, pixelAt image 5 2]) [traced, residual]
               @?= [[PixelRGBA8 0 0 0 0, PixelRGBA8 0 0 0 255], [PixelRGBA8 0 0 0 60, PixelRGBA8 0 0 0 0]]
           _ -> assertFailure "artwork was not partitioned into vector and raster components"
     , testCase "separating an untraceable stroke keeps the remaining trace unchanged" $
         case partitionArtwork strokeBesideBlockImage of
-          MixedArtwork traceable _ -> traceImage traceable @?= traceImage (cutoffComponentsImage 0)
+          ArtworkPartition (Just traced) _ _ -> traceImage traced @?= traceImage thickBlockImage
           _ -> assertFailure "artwork was not partitioned into vector and raster components"
-    , testCase "a component losing a quarter of its ink remains traceable" $
-        assertBool "boundary component stays vector" (partitionArtwork (quarterUntracedImage 85) == TraceableArtwork (quarterUntracedImage 85))
+    , testCase "a component losing a quarter of its ink remains vector" $
+        assertBool "boundary component has no raster residual" (null (residualComponents (partitionArtwork (quarterUntracedImage 85))))
     , testCase "a component losing more than a quarter of its ink becomes raster" $
-        assertBool "component crosses the bound" (partitionArtwork (quarterUntracedImage 86) == UntraceableArtwork (quarterUntracedImage 86))
+        assertBool "component crosses the bound" (partitionArtwork (quarterUntracedImage 86) == ArtworkPartition Nothing Nothing (Just (quarterUntracedImage 86)))
     , testCase "diagonally touching pixels form one component" $
-        assertBool "diagonal faint pixel joins opaque pixel" (partitionArtwork diagonalPairImage == TraceableArtwork diagonalPairImage)
+        assertBool "diagonal faint pixel has no raster residual" (null (residualComponents (partitionArtwork diagonalPairImage)))
+    , testCase "thin single-color strokes are traced from a supersampled field" $
+        assertBool "stroke is smoothed whole" (partitionArtwork thinLineImage == ArtworkPartition Nothing (Just thinLineImage) Nothing)
+    , testCase "thin multicolor strokes keep pixel tracing" $
+        assertBool "stroke stays whole pixel-tracing input" (partitionArtwork twoColorLineImage == ArtworkPartition (Just twoColorLineImage) Nothing Nothing)
+    , testCase "smoothed strokes are single closed cubic contours" $
+        case traceSmoothImage thinLineImage of
+          Right [shape] ->
+            let path = unVectorPath (vectorPath shape)
+             in assertBool ("path is one closed cubic contour: " <> show path) (Text.count "M" path == 1 && Text.isInfixOf "C" path && Text.isSuffixOf "Z" path && vectorOpacity shape == 1)
+          result -> assertFailure ("unexpected smooth trace result: " <> show result)
+    , testCase "smoothed strokes preserve their ink area" $
+        case traceSmoothImage thinLineImage of
+          Right [shape] ->
+            let area = curveArea 12 5 shape
+             in assertBool ("area " <> show area <> " is near the 8 square-pixel ink area") (area > 6.4 && area < 9.6)
+          result -> assertFailure ("unexpected smooth trace result: " <> show result)
+    , testCase "smoothed curve handles stay within their own segment" $
+        case traceSmoothImage dotOnLineImage of
+          Right [shape] ->
+            let segments = cubicSegments 40 7 (unVectorPath (vectorPath shape))
+             in assertBool ("handle excess: " <> show (maximum (map handleExcess segments))) (all ((<= 1.0e-4) . handleExcess) segments)
+          result -> assertFailure ("unexpected smooth trace result: " <> show result)
+    , testCase "sharp stroke ends remain curve corners" $
+        case traceSmoothImage thinLineImage of
+          Right [shape] ->
+            assertBool "a segment starts without a handle" (any (\(start, handle, _, _) -> start == handle) (cubicSegments 12 5 (unVectorPath (vectorPath shape))))
+          result -> assertFailure ("unexpected smooth trace result: " <> show result)
+    , testCase "smooth tracing is deterministic" $
+        traceSmoothImage dotOnLineImage @?= traceSmoothImage dotOnLineImage
     , testCase "contour tracing is deterministic" $
         traceImage diagonalStaircaseImage @?= traceImage diagonalStaircaseImage
     , testCase "nonzero highlighter pixels become opaque without changing RGB" $
@@ -570,20 +599,90 @@ cutoffComponentsImage count = generateImage pixel 8 4
       | otherwise = PixelRGBA8 0 0 0 0
 
 thinStrokeImage :: Image PixelRGBA8
-thinStrokeImage = generateImage pixel 8 4
+thinStrokeImage = generateImage pixel 14 10
   where
     pixel x y
       | y == 1 && x >= 1 && x <= 3 = PixelRGBA8 0 0 0 (if x == 2 then 96 else 60)
       | otherwise = PixelRGBA8 0 0 0 0
 
--- | 'thinStrokeImage' beside the opaque block of 'cutoffComponentsImage',
--- separated by one transparent column.
-strokeBesideBlockImage :: Image PixelRGBA8
-strokeBesideBlockImage = generateImage pixel 8 4
+-- | An opaque block wider than the smooth-tracing stroke limit.
+thickBlockImage :: Image PixelRGBA8
+thickBlockImage = generateImage pixel 14 10
   where
     pixel x y
-      | x >= 5 && x <= 6 && y >= 1 && y <= 2 = PixelRGBA8 0 0 0 255
-      | otherwise = pixelAt thinStrokeImage x y
+      | x >= 5 && x <= 12 && y >= 2 && y <= 8 = PixelRGBA8 0 0 0 255
+      | otherwise = PixelRGBA8 0 0 0 0
+
+-- | 'thinStrokeImage' beside 'thickBlockImage', separated by one transparent
+-- column.
+strokeBesideBlockImage :: Image PixelRGBA8
+strokeBesideBlockImage = generateImage pixel 14 10
+  where
+    pixel x y = case pixelAt thickBlockImage x y of
+      PixelRGBA8 _ _ _ 0 -> pixelAt thinStrokeImage x y
+      block -> block
+
+-- | An opaque one-pixel line eight pixels long.
+thinLineImage :: Image PixelRGBA8
+thinLineImage = generateImage pixel 12 5
+  where
+    pixel x y
+      | y == 2 && x >= 2 && x <= 9 = PixelRGBA8 0 0 0 255
+      | otherwise = PixelRGBA8 0 0 0 0
+
+twoColorLineImage :: Image PixelRGBA8
+twoColorLineImage = generateImage pixel 12 5
+  where
+    pixel x y = case pixelAt thinLineImage x y of
+      PixelRGBA8 _ _ _ 255 | x >= 6 -> PixelRGBA8 255 0 0 255
+      line -> line
+
+-- | A long one-pixel line ending in a three-pixel dot.
+dotOnLineImage :: Image PixelRGBA8
+dotOnLineImage = generateImage pixel 40 7
+  where
+    pixel x y
+      | y == 3 && x >= 2 && x <= 33 = PixelRGBA8 0 0 0 255
+      | x >= 33 && x <= 35 && y >= 2 && y <= 4 = PixelRGBA8 0 0 0 255
+      | otherwise = PixelRGBA8 0 0 0 0
+
+type CurvePoint = (Double, Double)
+
+-- | Start, handles, and end of each cubic segment of a single closed contour,
+-- in source pixels.
+cubicSegments :: Double -> Double -> Text.Text -> [(CurvePoint, CurvePoint, CurvePoint, CurvePoint)]
+cubicSegments width height path = zipWith segment (start : map endPoint curves) curves
+  where
+    chunks = Text.splitOn "C" (Text.filter (/= 'Z') path)
+    start = case numbers (Text.drop 1 (head chunks)) of
+      [x, y] -> (x, y)
+      _ -> (0, 0)
+    curves = map numbers (drop 1 chunks)
+    endPoint values = case values of
+      [_, _, _, _, x, y] -> (x, y)
+      _ -> (0, 0)
+    segment from values = case values of
+      [firstX, firstY, secondX, secondY, x, y] -> (from, (firstX, firstY), (secondX, secondY), (x, y))
+      _ -> (from, from, from, from)
+    numbers = scale . map (read . Text.unpack) . Text.words . Text.map (\character -> if character == ',' then ' ' else character)
+    scale values = zipWith (*) (cycle [width, height]) values
+
+-- | How far a segment's longer handle exceeds a third of the segment, in
+-- source pixels; serialized coordinates round to about 1e-5 pixels.
+handleExcess :: (CurvePoint, CurvePoint, CurvePoint, CurvePoint) -> Double
+handleExcess (start, firstHandle, secondHandle, end) = max (distance start firstHandle) (distance end secondHandle) - distance start end / 3
+  where
+    distance (ax, ay) (bx, by) = sqrt ((bx - ax) ^ (2 :: Int) + (by - ay) ^ (2 :: Int))
+
+-- | Area enclosed by a single closed cubic contour, in square source pixels.
+curveArea :: Double -> Double -> VectorShape -> Double
+curveArea width height shape = abs (sum [x * nextY - nextX * y | ((x, y), (nextX, nextY)) <- zip points (drop 1 points <> take 1 points)]) / 2
+  where
+    points = concatMap sampleSegment (cubicSegments width height (unVectorPath (vectorPath shape)))
+    sampleSegment (start, firstHandle, secondHandle, end) = [bezier start firstHandle secondHandle end (fromIntegral step / 16) | step <- [0 .. 15 :: Int]]
+    bezier (ax, ay) (bx, by) (cx, cy) (dx, dy) t =
+      let u = 1 - t
+       in (u * u * u * ax + 3 * u * u * t * bx + 3 * u * t * t * cx + t * t * t * dx, u * u * u * ay + 3 * u * u * t * by + 3 * u * t * t * cy + t * t * t * dy)
 
 quarterUntracedImage :: Word8 -> Image PixelRGBA8
 quarterUntracedImage faintAlpha = generateImage pixel 2 1
