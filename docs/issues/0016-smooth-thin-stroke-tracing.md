@@ -34,3 +34,4 @@ The BDR test design passes, `make test` and `make evaluate` pass, both consumers
 - GCP `make evaluate` passed and improved on Issue 0015: 18 DPI `0.002231784`, `0.992120699`, `1.006931336`, and 72 DPI `0.001406227`, `0.994949783`, `1.034701034` (mean error, within-tolerance fraction, ink ratio). Distribution validation passed. The JOBS zoom-detail crop is smooth and legible; the two native-resolution crops still match their references.
 - Algorithms `make evaluate` passed and improved: 18 DPI `0.002817522`, `0.98296802`, `1.089427704`, and 72 DPI `0.00216203`, `0.984945075`, `1.135111725`. The 72 DPI ink ratio moved further below the fixed `1.15` maximum.
 - Spot checks at 105 to 155 pixels per inch showed equal or smoother strokes with no new artifacts.
+- [PR #35](https://github.com/bajor/notes-website-factory-workflow/pull/35) delivers the change.
