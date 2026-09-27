@@ -60,7 +60,7 @@ A color space selected by a resource name in a PDF content stream. The supported
 
 ## Affine Image Transform
 
-A six-number matrix that can translate, scale, rotate, or shear embedded artwork. It is composed with the opposite vertical orientation of image samples: the generator applies it to traced vector points, and the browser applies it to raster images.
+A six-number matrix that can translate, scale, rotate, or shear embedded artwork. `Factory.Geometry` composes it with the opposite vertical orientation of image samples; traced vector points are placed through the result, and raster images receive it as their presentation matrix.
 
 ## Board Unit
 

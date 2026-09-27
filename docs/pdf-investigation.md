@@ -2,7 +2,7 @@
 type: Reference
 title: Apple Freeform PDF support profile
 description: Historical evidence, supported parsing, classification policy, and explicit limitations.
-timestamp: 2026-09-20
+timestamp: 2026-09-27
 ---
 # Apple Freeform PDF Support Profile
 
@@ -46,7 +46,7 @@ Classification uses the soft-mask samples before tracing, in this order:
 - traceable masks with a non-opaque sample fraction below `0.02` but above `0.01`: fail as ambiguous;
 - traceable masks with a non-opaque sample fraction of at least `0.02`: trace as vector.
 
-Tracing quantizes RGB channels in steps of 32 and uses a faint SVG layer for source alpha `88` through `95`. The image-classification cutoff remains `96`. Contours cross between integer alpha samples at `87.5` for the faint layer and `95.5` for the opaque layer, avoiding collapsed geometry at exact cutoff samples. Same-color sub-threshold edge samples contribute to interpolation, and adjacent opacity layers share their source-alpha crossing. Matching color-and-opacity boundaries become normalized even-odd paths. The fixed `0.25` square-pixel simplification bound applies independently to each contour; a simplification that destroys its signed area retains the unsimplified contour. There is no style-wide pixel-grid fallback. Low-alpha raster pixels become opaque only when the accepted highlighter profile applies. The browser restores each image XObject's PDF transform when it renders the SVG path data. [BDR 0017](/bdr/0017-preserve-local-traced-detail.md) owns local-detail behavior.
+Tracing quantizes RGB channels in steps of 32 and uses a faint SVG layer for source alpha `88` through `95`. The image-classification cutoff remains `96`. Contours cross between integer alpha samples at `87.5` for the faint layer and `95.5` for the opaque layer, avoiding collapsed geometry at exact cutoff samples. Same-color sub-threshold edge samples contribute to interpolation, and adjacent opacity layers share their source-alpha crossing. Matching color-and-opacity boundaries become even-odd paths. The fixed `0.25` square-pixel simplification bound applies independently to each contour; a simplification that destroys its signed area retains the unsimplified contour. There is no style-wide pixel-grid fallback. Low-alpha raster pixels become opaque only when the accepted highlighter profile applies. Each placement of the image XObject maps these paths through its PDF transform into board points, as [BDR 0023](/bdr/0023-webkit-close-zoom-visibility.md) specifies. [BDR 0017](/bdr/0017-preserve-local-traced-detail.md) owns local-detail behavior.
 
 Before tracing, each traceable image is divided into 8-connected components of nonzero alpha. A component whose alpha below `88` exceeds a quarter of its total alpha is not traced; it remains in a lossless PNG residual with source RGB and alpha, drawn with the image's own matrix, opacity, and clips. The GCP consumer showed why: Freeform downsampled large artwork groups to 4,096 pixels per side, down to 20 to 60 pixels per inch, leaving handwriting narrower than one source pixel. Among the remaining components, a stroke up to about three pixels wide whose pixels share one quantized color is traced from a bicubic field supersampled four times per axis. Its contour level preserves its ink area, and it is emitted as closed cubic curves. Thicker and multicolor components use the pixel tracer above. An untraceable component that is narrow and single-colored at half its own peak alpha, with a peak of at least `48`, is not kept raster. It is redrawn as opaque ink: the supersampled field is divided by its local maximum, and its contour at `0.6` becomes closed cubic curves. [BDR 0021](/bdr/0021-reconstructed-sub-pixel-strokes.md) owns this behavior.
 
@@ -75,7 +75,7 @@ The parser currently supports the subset required by the observed Freeform expor
 - typed game links for HTTPS `bajor.github.io` URLs with path `/algo-arcade/`, no credentials or explicit port, and a non-empty `#/games/` fragment route;
 - explicit rejection of PDF text until font decoding and metrics are implemented.
 
-The browser composes each image's complete PDF matrix with the opposite vertical orientation used by browser image data. The same affine presentation path supports raster images and normalized traced artwork. Native stroked paths accept non-singular similarity transforms, which preserve angles while scaling line width and dash lengths uniformly; non-uniform scale and shear fail explicitly because a scalar browser stroke cannot represent them faithfully after path coordinates are flattened into board space.
+`Factory.Geometry` composes each image's complete PDF matrix with the opposite vertical orientation of image samples. Raster images receive the result as their presentation matrix, and traced artwork is placed through it into board points. Native stroked paths accept non-singular similarity transforms, which preserve angles while scaling line width and dash lengths uniformly; non-uniform scale and shear fail explicitly because a scalar browser stroke cannot represent them faithfully after path coordinates are flattened into board space.
 
 ## Factory Fixture
 

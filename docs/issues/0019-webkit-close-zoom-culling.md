@@ -19,18 +19,23 @@ Implements ADR 0016 and [BDR 0023](/bdr/0023-webkit-close-zoom-visibility.md).
 
 ## Plan
 
-1. Emit vector artwork in board points from the generator and draw it without a transform.
+1. Present images and place vector artwork in board points in the generator, and draw artwork without a transform.
 2. Extend the close-zoom browser regression with the board-unit precondition, a clipped mark, and rendered-path alignment.
 3. Compare WebKit and Chromium on the real GCP build, measure build memory and zoom frame time, run the factory gates, and review the PR.
 4. Merge, redeploy the GCP consumer, and verify the published viewer.
 
 ## Verification
 
-- Baseline: `make test` passes all 107 tests. After the change, all 110 pass.
-- The close-zoom regression passes, and it fails when an artwork group rescales board units even though its paths compensate and stay aligned.
-- An offline board-point variant of the GCP scene matches Chromium in WebKit. Twenty-five aligned captures (five board regions at 1×, 4×, 8×, 12×, and 16×) were compared. The previous scene in WebKit loses ink in both reconstructed-stroke regions from 4× upward and differs in a pixel-traced region at 12×. With per-path transforms or board points, every WebKit capture has Chromium's dark-pixel fraction, and at most 0.0001 of pixels differ in luma by more than `96`.
-- Fine WebKit sweeps from 10× to 16× in 0.5× steps change ink smoothly after the fix: `0.129` to `0.197` and `0.0048` to `0.0194` at two stroke points, compared with `0` throughout before.
-- Uncapped Chromium continuous zoom on the GCP build, with vsync and the frame-rate limit disabled: the previous scene has a 7 to 13 ms median frame, per-path transforms 16 to 17 ms, and board points 4 to 6 ms. The first review found that capped 30-frame-per-second timing hid the per-path cost.
+- Baseline: `make test` passes all 107 tests. After the change, all 110 pass. Reducing serialization to one decimal place fails both serialization tests.
+- The close-zoom regression passes. It fails when an artwork group rescales board units even though its paths compensate and stay aligned.
+- `make evaluate` passes with zero difference at 18 and 72 DPI, including the runtime checks.
+- First review: per-path transforms, the first fix, measured "unchanged" only because headless timing was capped at 30 frames per second. Uncapped runs showed a 16 to 17 ms median frame against 7 to 13 ms before, so board points replaced them.
+- Second review: a text-serializing placement design retained traced resources through lazy summary counts, split validation away from `validateScene`, and duplicated the image orientation rule in JavaScript. These were corrected before the final build.
+- [Consumer verification run 36317241606](https://github.com/bajor/notes-gcp-storage-and-data-processing-engines/actions/runs/36317241606) built the real GCP board on a temporary consumer branch pinned to the PR, which cannot deploy. Results, in order mean error, within-tolerance fraction, and ink ratio: 18 DPI `0.002270884`, `0.992007129`, `1.016561687`; 72 DPI `0.001477913`, `0.994793397`, `1.044616353`. These match the deployed site within `0.0002`, including all six zoom-detail crops. The scene script grew 4.3 percent, with the same 575 vector artworks and 12 raster assets.
+- On that generated site, 25 aligned Chromium captures (five board regions at 1×, 4×, 8×, 12×, and 16×) are identical to the previous build. WebKit matches Chromium in every capture: at most 0.0001 of pixels differ in luma by more than `96`. Before the change, WebKit lost ink in both reconstructed-stroke regions from 4× upward and differed in a pixel-traced region at 12×.
+- Fine WebKit sweeps from 10× to 16× in 0.5× steps change ink smoothly on the generated site: `0.129` to `0.197` and `0.0048` to `0.0194` at two stroke points, compared with `0` throughout before.
+- Uncapped Chromium continuous zoom over six rounds, with vsync and the frame-rate limit disabled: median frames of 3 to 9 ms on the generated site against 7 to 11 ms on the previous build, and p95 frames of 10 to 17 ms against 15 to 34 ms.
+- Memory: this server cannot build the GCP board with either generator. Under a 2.3 GB heap cap, `origin/main` and the change both overflow at the same 2.33 GB live heap during tracing, which runs before placement.
 
 ## Acceptance
 

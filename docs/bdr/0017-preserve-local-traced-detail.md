@@ -18,7 +18,7 @@ The existing color quantization, two opacity layers, resource classification, or
 
 Normalized coordinate precision increases for large source dimensions so serialization does not collapse retained subpixel contours.
 
-On 2026-09-27, [BDR 0023](/bdr/0023-webkit-close-zoom-visibility.md) replaces this precision rule: vector artwork is serialized in board points rounded to a thousandth of a point. Its serialization test replaces scenario 7 below.
+On 2026-09-27, [BDR 0023](/bdr/0023-webkit-close-zoom-visibility.md) replaces this precision rule and scenario 7 below: vector artwork is serialized in board points rounded to a thousandth of a point, and a placed wide-image regression checks that contours keep their area.
 
 `visual-explanations/0017-local-tracing.svg` contrasts the former style-wide pixel fallback with layer-aware interpolation and contour-local simplification. `Factory.Vectorize` owns both flows; `Factory.Pdf` and `site/runtime.js` continue to consume the same vector shapes. Reviewers must verify that faint layers interpolate, cutoff components survive beside opaque artwork, and the real handwriting crop improves. The existing SVG cleanup workflow deletes this PR-only artifact from `main` after merge.
 
