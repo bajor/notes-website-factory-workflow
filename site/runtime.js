@@ -357,11 +357,12 @@ function applyView() {
   board.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
   if (!sceneSvg) return;
   // Keep the SVG surface screen-sized even when the board is deeply zoomed.
+  const { width, height } = viewport.getBoundingClientRect();
   sceneSvg.setAttribute('viewBox', [
     -view.x / view.scale,
     -view.y / view.scale,
-    viewport.clientWidth / view.scale,
-    viewport.clientHeight / view.scale,
+    width / view.scale,
+    height / view.scale,
   ].join(' '));
 }
 

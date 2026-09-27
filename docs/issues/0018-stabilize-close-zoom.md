@@ -3,7 +3,7 @@ type: Issue
 title: Stabilize close zoom
 description: Bound the SVG rendering surface, verify close-up navigation, and redeploy the GCP consumer.
 status: In Progress
-timestamp: 2026-09-26
+timestamp: 2026-09-27
 ---
 # Stabilize Close Zoom
 
@@ -29,6 +29,8 @@ Implements [ADR 0015](/adr/0015-viewport-sized-svg.md) and [BDR 0022](/bdr/0022-
 - The new high-zoom regression fails on the deployed runtime because the SVG exceeds the viewport. The corrected runtime passes the surface, requested-scale, anchor, overlay, keyboard-pan, and Fit checks.
 - `make test` passes all 107 tests. `make evaluate` passes with zero difference at 18 and 72 DPI; its report and enlarged captures were inspected. The runtime suite also passes after the final regression assertions.
 - Evaluation exposed a late Chromium viewport resize; evaluation mode now updates its coordinate window on resize while retaining its requested scale and offset.
+- [PR #37](https://github.com/bajor/notes-website-factory-workflow/pull/37) passed reusable-workflow CI. The configured Claude `/review` timed out; a fresh, focused Claude review completed with no blocking findings. Its fractional-viewport precision finding was fixed with exact rendered dimensions and a fractional-size browser fixture.
+- Real-source verification inspected 102 GPU-rendered zoom frames with no blank content frame, plus all six 4× and 8× detail crops. The crops retain the deployed artwork with small antialiasing differences.
 - The local full-consumer evaluation was interrupted by a server restart. Deployment acceptance requires the consumer's complete reusable-workflow run.
 
 ## Acceptance
