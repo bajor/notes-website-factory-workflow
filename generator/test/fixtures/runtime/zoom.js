@@ -24,6 +24,7 @@ try {
   const viewport = document.querySelector('#viewport');
   const svg = document.querySelector('.scene-svg');
   const link = document.querySelector('a[href="https://example.com/zoom-marker"]');
+  const markPath = [...document.querySelectorAll('.scene-vector-artwork path')].at(-1);
   const fittedScale = svg.getScreenCTM().a;
   const markCenter = new DOMPoint(mark.x + mark.width / 2, mark.y + mark.height / 2);
   const fittedCenter = markCenter.matrixTransform(svg.getScreenCTM());
@@ -58,10 +59,18 @@ try {
     if (Math.hypot(actual.x - expected.x, actual.y - expected.y) > tolerance) {
       throw new Error('Zoom anchor changed');
     }
-    const visual = markCenter.matrixTransform(svg.getScreenCTM());
+    const visual = markPath.getBoundingClientRect();
     const overlay = link.getBoundingClientRect();
-    if (Math.hypot(overlay.x + overlay.width / 2 - visual.x, overlay.y + overlay.height / 2 - visual.y) > tolerance) {
+    if (Math.hypot(overlay.x + overlay.width / 2 - (visual.x + visual.width / 2), overlay.y + overlay.height / 2 - (visual.y + visual.height / 2)) > tolerance) {
       throw new Error('Visual/link alignment changed');
+    }
+    // WebKit culls children against the paint rectangle in their group's units.
+    for (const group of document.querySelectorAll('.scene-vector-artwork')) {
+      const groupMatrix = group.getScreenCTM();
+      const boardMatrix = svg.getScreenCTM();
+      if (['a', 'b', 'c', 'd', 'e', 'f'].some((key) => Math.abs(groupMatrix[key] - boardMatrix[key]) > scaleTolerance)) {
+        throw new Error('Vector artwork group changed board units');
+      }
     }
   }
 } catch (error) {

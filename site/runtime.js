@@ -110,9 +110,13 @@ function addVectorArtwork(node) {
   const group = createSvgElement('g');
   group.classList.add('scene-vector-artwork');
   group.setAttribute('opacity', node.opacity);
-  group.setAttribute('transform', cssMatrix(imagePresentationMatrix(node.matrix)));
+  // Keep the group in board units: WebKit culls a group's children against the
+  // paint rectangle in 1/64-unit fixed point, which collapses at close zoom when
+  // the unit is a normalized image thousands of points wide.
+  const transform = cssMatrix(imagePresentationMatrix(node.matrix));
   for (const shape of node.shapes) {
     const path = createSvgElement('path');
+    path.setAttribute('transform', transform);
     path.setAttribute('d', shape.path);
     path.setAttribute('fill', cssColor(shape.color));
     path.setAttribute('fill-opacity', shape.opacity);
