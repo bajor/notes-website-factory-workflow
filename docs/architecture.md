@@ -99,12 +99,12 @@ flowchart TD
   YouTube[YouTube activation button]
   Game[Algo Arcade anchor and badge]
   External[External anchor]
-  Interpret[Immutable graphics-state interpreter<br/>including named colors, miters, and dashes]
+  Interpret[Immutable graphics-state interpreter<br/>including named colors, miters, dashes,<br/>and board-point vector placement]
   Raw[Scene Unvalidated]
   Validate[validateScene]
   Valid[Scene Validated]
   Emit[Static JavaScript scene and assets]
-  Affine[Affine image presentation matrix]
+  Affine[Affine raster presentation matrix]
   Browser[Inline SVG, DOM overlays, and Fit]
 
   Input --> Parse --> Mask
@@ -150,7 +150,7 @@ The deployed product receives only the validated scene and its extracted assets.
 | Module | Responsibility | Effects |
 | --- | --- | --- |
 | `Factory.Domain` | Coordinates, matrices, color spaces, paint styles, nodes, typed link targets, assets, titles, validation phases, and errors | None |
-| `Factory.Geometry` | PDF-to-board transformations and affine matrix operations | None |
+| `Factory.Geometry` | PDF-to-board transformations, traced-path placement, and affine matrix operations | None |
 | `Factory.Interpreter` | PDF operator state machine and scene-node emission, including paired vector and residual raster nodes | None |
 | `Factory.Vectorize` | Image classification, highlighter opacity profiling, traceable-component partitioning, quantization, contour tracing, supersampled thin-stroke tracing, sub-pixel stroke reconstruction, and simplification | None |
 | `Factory.Pdf` | PDF objects, streams, resources, annotations, structural URL classification, and raster and residual materialization | File input and asset output |
@@ -174,7 +174,7 @@ The deployed product receives only the validated scene and its extracted assets.
 
 [ADR 0015](/adr/0015-viewport-sized-svg.md) moves the visual SVG out of the CSS-transformed HTML board. One camera update sets the viewport-sized SVG's coordinate window and the HTML overlay transform. The SVG owns the white source-board rectangle and ordered visuals; the HTML board owns text, links, and activated embeds. `site/styles.css` bounds the SVG to the viewport. [BDR 0022](/bdr/0022-bounded-zoom-rendering.md) defines the browser checks. The PR-only `visual-explanations/0022-bounded-zoom-rendering.svg` shows this control flow.
 
-[ADR 0016](/adr/0016-transform-traced-paths-individually.md) keeps every SVG container in board units: `site/runtime.js` applies each vector artwork placement on its paths, and the group keeps opacity and clips. [BDR 0023](/bdr/0023-webkit-close-zoom-visibility.md) owns the resulting WebKit close-zoom contract. Module ownership and data flow are unchanged.
+[ADR 0016](/adr/0016-board-point-vector-artwork.md) moves vector artwork placement from the browser into the generator. `Factory.Vectorize` returns image-space contours, `Factory.Interpreter` places them through `Factory.Geometry` when it emits each image, and `Factory.Domain` serializes board-point path data; `site/runtime.js` keeps presenting raster images. [BDR 0023](/bdr/0023-webkit-close-zoom-visibility.md) owns the resulting WebKit close-zoom contract. The PR-only `visual-explanations/0023-board-point-artwork.svg` shows this data flow.
 
 ## Determinism and Compatibility
 

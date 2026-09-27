@@ -20,7 +20,7 @@ A soft-mask sample at or above alpha `96` that selects its image resource for co
 
 ## Vector Artwork
 
-A scene node containing normalized, closed SVG paths traced from an eligible embedded image.
+A scene node containing closed SVG paths traced from an eligible embedded image and placed in board units.
 
 ## Untraceable Component
 
@@ -60,11 +60,11 @@ A color space selected by a resource name in a PDF content stream. The supported
 
 ## Affine Image Transform
 
-A six-number matrix that can translate, scale, rotate, or shear embedded artwork. The browser composes this PDF matrix with the opposite vertical orientation used by image samples and DOM images.
+A six-number matrix that can translate, scale, rotate, or shear embedded artwork. It is composed with the opposite vertical orientation of image samples: the generator applies it to traced vector points, and the browser applies it to raster images.
 
 ## Board Unit
 
-One PDF point of the source board. It is the SVG user unit of the scene root and of every SVG container; only leaf elements such as traced paths and images apply their own affine image transform.
+One PDF point of the source board. It is the user unit of the scene SVG, its containers, and its vector paths; only raster images apply their own affine image transform.
 
 ## Game Link
 
