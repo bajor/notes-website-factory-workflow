@@ -3,12 +3,20 @@ import { scene } from './scene.generated.js';
 const mark = { x: 27000, y: 17000, width: 4, height: 4 };
 scene.width = 30000;
 scene.height = 20000;
+const markRight = mark.x + mark.width;
+const markBottom = mark.y + mark.height;
+const markClip = [
+  { kind: 'move', point: { x: mark.x, y: mark.y } },
+  { kind: 'line', point: { x: markRight, y: mark.y } },
+  { kind: 'line', point: { x: markRight, y: markBottom } },
+  { kind: 'line', point: { x: mark.x, y: markBottom } },
+  { kind: 'close' },
+];
 scene.nodes.push({
   kind: 'vector-artwork',
-  shapes: [{ path: 'M0,0H1V1H0Z', color: { r: 0, g: 0, b: 0 }, opacity: 1 }],
-  matrix: { a: mark.width, b: 0, c: 0, d: -mark.height, e: mark.x, f: mark.y + mark.height },
+  shapes: [{ path: `M${mark.x},${mark.y}H${markRight}V${markBottom}H${mark.x}Z`, color: { r: 0, g: 0, b: 0 }, opacity: 1 }],
   opacity: 1,
-  clips: [],
+  clips: [{ rule: 'nonzero', commands: markClip }],
 }, {
   kind: 'link',
   target: { kind: 'external', url: 'https://example.com/zoom-marker' },
@@ -24,6 +32,7 @@ try {
   const viewport = document.querySelector('#viewport');
   const svg = document.querySelector('.scene-svg');
   const link = document.querySelector('a[href="https://example.com/zoom-marker"]');
+  const markPath = [...document.querySelectorAll('.scene-vector-artwork path')].at(-1);
   const fittedScale = svg.getScreenCTM().a;
   const markCenter = new DOMPoint(mark.x + mark.width / 2, mark.y + mark.height / 2);
   const fittedCenter = markCenter.matrixTransform(svg.getScreenCTM());
@@ -38,6 +47,7 @@ try {
     }));
     assertPresentation(anchor, scale);
   }
+  assertBoardUnits();
   viewport.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
   assertPresentation({ x: anchor.x + 48, y: anchor.y }, 4);
   document.querySelector('[data-action="fit"]').click();
@@ -58,10 +68,23 @@ try {
     if (Math.hypot(actual.x - expected.x, actual.y - expected.y) > tolerance) {
       throw new Error('Zoom anchor changed');
     }
-    const visual = markCenter.matrixTransform(svg.getScreenCTM());
+    const visual = markPath.getBoundingClientRect();
     const overlay = link.getBoundingClientRect();
-    if (Math.hypot(overlay.x + overlay.width / 2 - visual.x, overlay.y + overlay.height / 2 - visual.y) > tolerance) {
+    if (Math.hypot(overlay.x + overlay.width / 2 - (visual.x + visual.width / 2), overlay.y + overlay.height / 2 - (visual.y + visual.height / 2)) > tolerance) {
       throw new Error('Visual/link alignment changed');
+    }
+  }
+
+  // WebKit culls SVG content against a paint rectangle kept in 1/64 of the
+  // local unit, so vector containers and paths must not rescale board points.
+  function assertBoardUnits() {
+    const matrixTolerance = 1e-6;
+    const board = svg.getScreenCTM();
+    for (const element of svg.querySelectorAll('g[clip-path], .scene-vector-artwork, .scene-vector-artwork path')) {
+      const local = element.getScreenCTM();
+      if (['a', 'b', 'c', 'd', 'e', 'f'].some((key) => Math.abs(local[key] - board[key]) > matrixTolerance)) {
+        throw new Error('Vector content left board units');
+      }
     }
   }
 } catch (error) {

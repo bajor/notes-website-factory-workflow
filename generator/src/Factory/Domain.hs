@@ -20,6 +20,7 @@ module Factory.Domain
   , DeviceColorSpace (..)
   , FillRule (..)
   , GameUrl (..)
+  , ImageSpace
   , LinkTarget (..)
   , Matrix (..)
   , PaintStyle (..)
@@ -32,7 +33,9 @@ module Factory.Domain
   , SiteTitle
   , TextRun (..)
   , Validation (..)
+  , VectorContour (..)
   , VectorPath (..)
+  , VectorSegment (..)
   , VectorShape (..)
   , VideoId (..)
   , WebUrl (..)
@@ -45,6 +48,7 @@ import Data.Aeson (ToJSON (toJSON), object, (.=))
 import Data.Char (isControl)
 import Data.Text (Text)
 import qualified Data.Text as Text
+import Numeric (showFFloat)
 
 -- | A type-level label saying whether validation has run.
 data Validation = Unvalidated | Validated
@@ -53,13 +57,17 @@ data Validation = Unvalidated | Validated
 data PdfSpace
 data BoardSpace
 
+-- | Normalized image samples: x grows right and y grows down across the unit square.
+data ImageSpace
+
 newtype Coordinate space = Coordinate {unCoordinate :: Double}
   deriving stock (Eq, Show)
   deriving newtype (Num)
 
+-- | Strict unboxed fields keep the millions of traced points compact.
 data Point space = Point
-  { pointX :: Coordinate space
-  , pointY :: Coordinate space
+  { pointX :: {-# UNPACK #-} !(Coordinate space)
+  , pointY :: {-# UNPACK #-} !(Coordinate space)
   }
   deriving stock (Eq, Show)
 
@@ -83,9 +91,9 @@ data Matrix = Matrix
   deriving stock (Eq, Show)
 
 data PathCommand
-  = MoveTo (Point BoardSpace)
-  | LineTo (Point BoardSpace)
-  | CurveTo (Point BoardSpace) (Point BoardSpace) (Point BoardSpace)
+  = MoveTo {-# UNPACK #-} !(Point BoardSpace)
+  | LineTo {-# UNPACK #-} !(Point BoardSpace)
+  | CurveTo {-# UNPACK #-} !(Point BoardSpace) {-# UNPACK #-} !(Point BoardSpace) {-# UNPACK #-} !(Point BoardSpace)
   | ClosePath
   deriving stock (Eq, Show)
 
@@ -168,19 +176,31 @@ data TextRun = TextRun
   }
   deriving stock (Eq, Show)
 
-newtype VectorPath = VectorPath {unVectorPath :: Text}
+data VectorSegment
+  = VectorLine {-# UNPACK #-} !(Point ImageSpace)
+  | VectorCubic {-# UNPACK #-} !(Point ImageSpace) {-# UNPACK #-} !(Point ImageSpace) {-# UNPACK #-} !(Point ImageSpace)
   deriving stock (Eq, Show)
 
-data VectorShape = VectorShape
-  { vectorPath :: VectorPath
+-- | A closed contour: its start point and the segments that return to it.
+data VectorContour = VectorContour {-# UNPACK #-} !(Point ImageSpace) [VectorSegment]
+  deriving stock (Eq, Show)
+
+-- | Traced geometry in image space, before a placement matrix maps it onto the board.
+newtype VectorPath = VectorPath {vectorContours :: [VectorContour]}
+  deriving stock (Eq, Show)
+
+-- | One fill of vector artwork. Tracing yields a 'VectorPath'; placement yields board 'PathCommand's.
+data VectorShape path = VectorShape
+  { vectorPath :: path
   , vectorColor :: Color
   , vectorOpacity :: Double
   }
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Functor)
 
 data SceneNode
-  = ImageNode AssetId Matrix Double [ClipPath]
-  | VectorArtworkNode [VectorShape] Matrix Double [ClipPath]
+  = -- | The matrix maps image samples, rows counted from the top, from the unit square onto the board.
+    ImageNode AssetId Matrix Double [ClipPath]
+  | VectorArtworkNode [VectorShape [PathCommand]] Double [ClipPath]
   | PathNode [PathCommand] PaintStyle [ClipPath]
   | TextNode TextRun [ClipPath]
   | LinkNode LinkTarget (Rect BoardSpace)
@@ -276,10 +296,12 @@ instance ToJSON PaintStyle where
           , "rule" .= case rule of NonZero -> ("nonzero" :: Text); EvenOdd -> "evenodd"
           ]
 
-instance ToJSON VectorShape where
+-- | Vector artwork paths are SVG path data in board points, which keeps them
+-- compact and lets the browser draw them without a scaling transform.
+instance ToJSON (VectorShape [PathCommand]) where
   toJSON shape =
     object
-      [ "path" .= unVectorPath (vectorPath shape)
+      [ "path" .= svgPathData (vectorPath shape)
       , "color" .= vectorColor shape
       , "opacity" .= vectorOpacity shape
       ]
@@ -294,11 +316,10 @@ instance ToJSON SceneNode where
         , "opacity" .= opacity
         , "clips" .= clips
         ]
-    VectorArtworkNode shapes matrix opacity clips ->
+    VectorArtworkNode shapes opacity clips ->
       object
         [ "kind" .= ("vector-artwork" :: Text)
         , "shapes" .= shapes
-        , "matrix" .= matrix
         , "opacity" .= opacity
         , "clips" .= clips
         ]
@@ -348,3 +369,26 @@ instance ToJSON (Scene 'Validated) where
       , "assets" .= sceneAssets scene
        , "nodes" .= sceneContent scene
       ]
+
+svgPathData :: [PathCommand] -> Text
+svgPathData = Text.concat . map commandText
+  where
+    commandText command = case command of
+      MoveTo point -> "M" <> pointText point
+      LineTo point -> "L" <> pointText point
+      CurveTo first second end -> Text.concat ["C", pointText first, " ", pointText second, " ", pointText end]
+      ClosePath -> "Z"
+    pointText (Point x y) = boardDecimal (unCoordinate x) <> "," <> boardDecimal (unCoordinate y)
+
+-- | A thousandth of a point is under a tenth of a device pixel at the viewer's maximum zoom.
+boardDecimal :: Double -> Text
+boardDecimal value
+  | rounded == 0 = "0"
+  | otherwise = trimZeros (Text.pack (showFFloat (Just boardDecimalPlaces) rounded ""))
+  where
+    boardDecimalPlaces = 3
+    scale = 10 ^ boardDecimalPlaces :: Double
+    rounded = fromIntegral (round (value * scale) :: Integer) / scale
+    trimZeros text =
+      let withoutZeros = Text.dropWhileEnd (== '0') text
+       in if Text.isSuffixOf "." withoutZeros then Text.dropEnd 1 withoutZeros else withoutZeros

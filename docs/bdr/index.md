@@ -16,9 +16,10 @@
 - [BDR 0014: Smooth traced SVG artwork](/bdr/0014-smooth-traced-svg-artwork.md) - Superseded by BDR 0015.
 - [BDR 0015: Interpolated traced SVG contours](/bdr/0015-interpolated-traced-svg-contours.md) - Superseded by BDR 0016.
 - [BDR 0016: Alpha-layer traced SVG artwork](/bdr/0016-alpha-layer-traced-svg-artwork.md) - Superseded by BDR 0017.
-- [BDR 0017: Preserve local traced detail](/bdr/0017-preserve-local-traced-detail.md) - Accepted. Keep faint and cutoff-alpha contours local and interpolated.
+- [BDR 0017: Preserve local traced detail](/bdr/0017-preserve-local-traced-detail.md) - Accepted. Keep faint and cutoff-alpha contours local and interpolated; BDR 0023 replaces its serialization precision rule.
 - [BDR 0018: Zoom-detail evidence](/bdr/0018-zoom-detail-evidence.md) - Accepted. Capture deterministic handwriting detail at four and eight times native-point scale.
 - [BDR 0019: Raster residual for untraceable strokes](/bdr/0019-raster-residual-for-untraceable-strokes.md) - Superseded by BDR 0020.
 - [BDR 0020: Smooth thin-stroke tracing](/bdr/0020-smooth-thin-stroke-tracing.md) - Superseded by BDR 0021.
 - [BDR 0021: Reconstructed sub-pixel strokes](/bdr/0021-reconstructed-sub-pixel-strokes.md) - Accepted. Redraw narrow single-color sub-pixel strokes as crisp opaque curves; keep other untraceable marks raster.
 - [BDR 0022: Bounded zoom rendering](/bdr/0022-bounded-zoom-rendering.md) - Accepted. Keep the visual surface within the viewport and preserve zoom anchors and overlay alignment.
+- [BDR 0023: WebKit close-zoom visibility](/bdr/0023-webkit-close-zoom-visibility.md) - Accepted. Keep traced artwork visible and stable in WebKit throughout close-up zoom by emitting it in board points.

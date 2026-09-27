@@ -7,18 +7,25 @@ module Factory.Geometry
   ( applyMatrix
   , boardMatrix
   , identityMatrix
+  , imagePresentationMatrix
   , multiplyMatrix
   , pdfPointToBoard
+  , placeVectorPath
   , rectangleToBoard
   ) where
 
 import Factory.Domain
   ( BoardSpace
   , Coordinate (Coordinate, unCoordinate)
+  , ImageSpace
   , Matrix (Matrix)
+  , PathCommand (ClosePath, CurveTo, LineTo, MoveTo)
   , PdfSpace
   , Point (Point)
   , Rect (Rect)
+  , VectorContour (VectorContour)
+  , VectorPath (vectorContours)
+  , VectorSegment (VectorCubic, VectorLine)
   )
 
 identityMatrix :: Matrix
@@ -47,6 +54,23 @@ pdfPointToBoard pageHeight (Point x y) =
 boardMatrix :: Coordinate PdfSpace -> Matrix -> Matrix
 boardMatrix (Coordinate pageHeight) (Matrix a b c d e f) =
   Matrix a (-b) c (-d) e (pageHeight - f)
+
+-- | Map image samples, rows counted from the top, from the unit square onto the board.
+--
+-- A PDF image matrix maps the unit square with its y axis growing up, so the
+-- first sample row lies at y = 1. This is the only place that flips it.
+imagePresentationMatrix :: Matrix -> Matrix
+imagePresentationMatrix (Matrix a b c d e f) = Matrix a b (-c) (-d) (e + c) (f + d)
+
+-- | Place traced image geometry with an image node's presentation matrix.
+placeVectorPath :: Matrix -> VectorPath -> [PathCommand]
+placeVectorPath matrix = concatMap contourCommands . vectorContours
+  where
+    contourCommands (VectorContour start segments) = MoveTo (place start) : map segmentCommand segments <> [ClosePath]
+    segmentCommand (VectorLine point) = LineTo (place point)
+    segmentCommand (VectorCubic first second end) = CurveTo (place first) (place second) (place end)
+    place :: Point ImageSpace -> Point BoardSpace
+    place (Point x y) = applyMatrix matrix (Point (coerceCoordinate x) (coerceCoordinate y))
 
 rectangleToBoard :: Coordinate PdfSpace -> Rect PdfSpace -> Rect BoardSpace
 rectangleToBoard height (Rect x y width rectangleHeight) =

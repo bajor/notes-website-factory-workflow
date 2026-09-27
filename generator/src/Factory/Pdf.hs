@@ -89,8 +89,8 @@ type PdfAction = ExceptT BuildError IO
 data PreparedImage
   = PreparedJpeg Asset ByteString
   | PreparedPng Asset (Image PixelRGBA8)
-  | PreparedVector [VectorShape]
-  | PreparedMixed [VectorShape] Asset (Image PixelRGBA8)
+  | PreparedVector [VectorShape VectorPath]
+  | PreparedMixed [VectorShape VectorPath] Asset (Image PixelRGBA8)
 
 data ParsedPdf = ParsedPdf
   { parsedScene :: Scene 'Unvalidated
@@ -137,7 +137,10 @@ parseOpenPdf assetDirectory pdf = do
   let referencedAssets = Set.fromList [identifier | ImageNode identifier _ _ _ <- contentNodes]
       usedImages = filter (isUsedRaster referencedAssets) (Map.elems preparedImages)
   assets <- materializeImages assetDirectory usedImages
-  let vectorCount = length (filter isPreparedVector (Map.elems preparedImages))
+  -- Strict counts let traced resources be collected once placement has used them.
+  let !operatorCount = length operators
+      !imageCount = Map.size preparedImages
+      !vectorCount = length (filter isPreparedVector (Map.elems preparedImages))
       rasterCount = length assets
   let scene =
         Scene
@@ -146,7 +149,7 @@ parseOpenPdf assetDirectory pdf = do
           , sceneAssets = assets
           , sceneContent = contentNodes <> links
           }
-      summary = PdfSummary 1 (length operators) (Map.size preparedImages) vectorCount rasterCount (length links) width height
+      summary = PdfSummary 1 operatorCount imageCount vectorCount rasterCount (length links) width height
   pure (ParsedPdf scene summary)
 
 isPreparedVector :: PreparedImage -> Bool

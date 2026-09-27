@@ -29,15 +29,14 @@ export const scene = {
     },
     {
       kind: 'vector-artwork',
-      shapes: [{ path: 'M0,0L1,0L0,1Z', color: { r: 1, g: 0, b: 0 }, opacity: 1 }],
-      matrix: { a: 0, b: 20, c: -30, d: 0, e: 80, f: 90 },
+      shapes: [{ path: 'M50,90L50,110L80,90Z', color: { r: 1, g: 0, b: 0 }, opacity: 1 }],
       opacity: 1,
       clips: [],
     },
     {
       kind: 'image',
       asset: 'asymmetric-raster',
-      matrix: { a: 40, b: 10, c: -5, d: 20, e: 15, f: 25 },
+      matrix: { a: 40, b: 10, c: 5, d: -20, e: 10, f: 45 },
       opacity: 1,
       clips: [],
     },

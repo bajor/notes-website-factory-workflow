@@ -96,7 +96,7 @@ escapeHtml =
 nodeIsFinite :: SceneNode -> Bool
 nodeIsFinite node = case node of
   ImageNode _ matrix opacity clips -> matrixIsFinite matrix && finite opacity && all clipIsFinite clips
-  VectorArtworkNode shapes matrix opacity clips -> all vectorShapeIsFinite shapes && matrixIsFinite matrix && finite opacity && all clipIsFinite clips
+  VectorArtworkNode shapes opacity clips -> all vectorShapeIsFinite shapes && finite opacity && all clipIsFinite clips
   PathNode commands style clips -> all commandIsFinite commands && styleIsFinite style && all clipIsFinite clips
   TextNode run clips -> matrixIsFinite (textMatrix run) && finite (textFontSize run) && finite (textOpacity run) && all clipIsFinite clips
   LinkNode _ rectangle -> all finite [coordinate (rectX rectangle), coordinate (rectY rectangle), coordinate (rectWidth rectangle), coordinate (rectHeight rectangle)]
@@ -122,7 +122,7 @@ referencesMissingAsset _ _ = False
 nodeValuesAreValid :: SceneNode -> Bool
 nodeValuesAreValid node = case node of
   ImageNode _ _ opacity _ -> unitInterval opacity
-  VectorArtworkNode shapes _ opacity _ -> not (null shapes) && unitInterval opacity && all vectorShapeIsValid shapes
+  VectorArtworkNode shapes opacity _ -> not (null shapes) && unitInterval opacity && all vectorShapeIsValid shapes
   PathNode _ style _ -> paintLineWidth style >= 0 && paintMiterLimit style >= 1 && validDashArray (paintDashArray style) && unitInterval (paintOpacity style) && maybe True (colorIsValid . fst) (paintFill style) && maybe True colorIsValid (paintStroke style)
   TextNode run _ -> textFontSize run > 0 && unitInterval (textOpacity run)
   LinkNode _ rectangle -> unCoordinate (rectWidth rectangle) > 0 && unCoordinate (rectHeight rectangle) > 0
@@ -149,11 +149,11 @@ styleIsFinite style =
 colorIsFinite :: Color -> Bool
 colorIsFinite color = all finite [colorRed color, colorGreen color, colorBlue color]
 
-vectorShapeIsFinite :: VectorShape -> Bool
-vectorShapeIsFinite shape = colorIsFinite (vectorColor shape) && finite (vectorOpacity shape)
+vectorShapeIsFinite :: VectorShape [PathCommand] -> Bool
+vectorShapeIsFinite shape = all commandIsFinite (vectorPath shape) && colorIsFinite (vectorColor shape) && finite (vectorOpacity shape)
 
-vectorShapeIsValid :: VectorShape -> Bool
-vectorShapeIsValid shape = not (Text.null (unVectorPath (vectorPath shape))) && colorIsValid (vectorColor shape) && unitInterval (vectorOpacity shape)
+vectorShapeIsValid :: VectorShape [PathCommand] -> Bool
+vectorShapeIsValid shape = not (null (vectorPath shape)) && colorIsValid (vectorColor shape) && unitInterval (vectorOpacity shape)
 
 clipIsFinite :: ClipPath -> Bool
 clipIsFinite = all commandIsFinite . clipCommands

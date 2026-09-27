@@ -40,8 +40,8 @@ data ColorSpaceResource
 
 data VisualResource
   = RasterResource AssetId
-  | VectorResource [VectorShape]
-  | MixedResource [VectorShape] AssetId
+  | VectorResource [VectorShape VectorPath]
+  | MixedResource [VectorShape VectorPath] AssetId
   deriving stock (Eq, Show)
 
 data GraphicsState = GraphicsState
@@ -279,13 +279,17 @@ emitImage height resources machine value = do
   name <- maybe (Left (PdfStructureError "Do expected an image resource name")) Right (nameValue value)
   resource <- maybe (Left (PdfStructureError ("missing image resource " <> nameText name))) Right (Map.lookup name (resourceImages resources))
   let graphics = machineGraphics machine
-      matrix = boardMatrix height (currentMatrix graphics)
+      matrix = imagePresentationMatrix (boardMatrix height (currentMatrix graphics))
       opacity = currentOpacity graphics
       clips = currentClips graphics
+      -- ponytail: Each Do places its own board-point copy of a traced resource,
+      -- so a reused image XObject repeats its path data; share one placed path
+      -- through SVG <use> if consumer PDFs start reusing traced XObjects.
+      artwork shapes = VectorArtworkNode (map (fmap (placeVectorPath matrix)) shapes) opacity clips
       nodes = case resource of
         RasterResource identifier -> [ImageNode identifier matrix opacity clips]
-        VectorResource shapes -> [VectorArtworkNode shapes matrix opacity clips]
-        MixedResource shapes identifier -> [VectorArtworkNode shapes matrix opacity clips, ImageNode identifier matrix opacity clips]
+        VectorResource shapes -> [artwork shapes]
+        MixedResource shapes identifier -> [artwork shapes, ImageNode identifier matrix opacity clips]
   Right machine {machineNodes = reverse nodes <> machineNodes machine}
 
 setAlpha :: Resources -> Machine -> Object -> Either BuildError Machine
