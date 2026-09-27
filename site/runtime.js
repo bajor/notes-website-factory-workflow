@@ -26,6 +26,7 @@ async function initialize() {
   try {
     if (evaluationMode) {
       controls.hidden = true;
+      window.addEventListener('resize', applyView);
       // PDF coordinates use 72 points per inch, so DPI / 72 gives the
       // matching browser scale for each evaluation resolution.
       view.scale = evaluationDpi / 72;
@@ -38,7 +39,10 @@ async function initialize() {
     }
     await buildScene();
     await document.fonts.ready;
-    if (readinessMode) board.replaceChildren();
+    if (readinessMode) {
+      board.replaceChildren();
+      sceneSvg.remove();
+    }
     status.remove();
     document.body.dataset.ready = 'true';
   } catch (error) {
@@ -53,11 +57,16 @@ async function buildScene() {
   board.style.height = `${scene.height}px`;
   sceneSvg = createSvgElement('svg');
   sceneSvg.classList.add('scene-svg');
-  sceneSvg.setAttribute('viewBox', `0 0 ${scene.width} ${scene.height}`);
+  sceneSvg.setAttribute('preserveAspectRatio', 'none');
   sceneSvg.setAttribute('aria-hidden', 'true');
   clipDefinitions = createSvgElement('defs');
-  sceneSvg.append(clipDefinitions);
-  board.append(sceneSvg);
+  const background = createSvgElement('rect');
+  background.setAttribute('width', scene.width);
+  background.setAttribute('height', scene.height);
+  background.setAttribute('fill', 'white');
+  sceneSvg.append(clipDefinitions, background);
+  viewport.prepend(sceneSvg);
+  applyView();
 
   const assets = new Map(scene.assets.map((asset) => [asset.id, asset]));
   const imageLoads = [];
@@ -346,6 +355,15 @@ function fitBoard() {
 
 function applyView() {
   board.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+  if (!sceneSvg) return;
+  // Keep the SVG surface screen-sized even when the board is deeply zoomed.
+  const { width, height } = viewport.getBoundingClientRect();
+  sceneSvg.setAttribute('viewBox', [
+    -view.x / view.scale,
+    -view.y / view.scale,
+    width / view.scale,
+    height / view.scale,
+  ].join(' '));
 }
 
 function cssMatrix(matrix) {
