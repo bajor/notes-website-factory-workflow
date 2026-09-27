@@ -2,7 +2,7 @@
 type: Issue
 title: Stabilize close zoom
 description: Bound the SVG rendering surface, verify close-up navigation, and redeploy the GCP consumer.
-status: In Progress
+status: Done
 timestamp: 2026-09-27
 ---
 # Stabilize Close Zoom
@@ -31,7 +31,15 @@ Implements [ADR 0015](/adr/0015-viewport-sized-svg.md) and [BDR 0022](/bdr/0022-
 - Evaluation exposed a late Chromium viewport resize; evaluation mode now updates its coordinate window on resize while retaining its requested scale and offset.
 - [PR #37](https://github.com/bajor/notes-website-factory-workflow/pull/37) passed reusable-workflow CI. The configured Claude `/review` timed out; a fresh, focused Claude review completed with no blocking findings. Its fractional-viewport precision finding was fixed with exact rendered dimensions and a fractional-size browser fixture.
 - Real-source verification inspected 102 GPU-rendered zoom frames with no blank content frame, plus all six 4× and 8× detail crops. The crops retain the deployed artwork with small antialiasing differences.
-- The local full-consumer evaluation was interrupted by a server restart. Deployment acceptance requires the consumer's complete reusable-workflow run.
+- The local full-consumer evaluation was interrupted by server restarts. The complete consumer evaluation and deployment subsequently passed in GitHub Actions, as recorded below.
+
+## Deployment and Cleanup
+
+- [PR #37](https://github.com/bajor/notes-website-factory-workflow/pull/37) merged as `01465c7b01e6c4ee652f4d64515b58d46e037fba` on 2026-09-27. The cleanup workflow removed the review SVG from `main` afterward.
+- [Consumer run 36298247809](https://github.com/bajor/notes-gcp-storage-and-data-processing-engines/actions/runs/36298247809) successfully evaluated and deployed consumer `0070a6dabd70e2ea0ebc13bc58a2d81acd1135ca` using that exact factory commit. The report and enlarged output were inspected.
+- Whole-board results, in order mean error, within-tolerance fraction, and ink ratio: 18 DPI `0.002271963`, `0.992007517`, `1.016710187`; 72 DPI `0.001477928`, `0.994792586`, `1.044628509`. Both fixed gates passed.
+- At 2026-09-27 06:05 UTC, the live site's runtime and stylesheet matched the merged files byte-for-byte. Fifteen zoom checks across three board regions reached 4×, 8×, 12×, and 16× with viewport-bounded SVG dimensions, stable anchors, and no browser errors. The live scene retained 575 vector artworks and 12 raster assets.
+- After live verification, all six legacy `github-pages` deployment records and the retired `github-pages` environment were deleted from `bajor/notes-website-factory-workflow`. GitHub returned zero remaining deployments and environments. The factory already had no configured Pages site.
 
 ## Acceptance
 
