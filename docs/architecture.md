@@ -157,7 +157,7 @@ The deployed product receives only the validated scene and its extracted assets.
 | `Factory.Site` | Scene validation and deterministic site emission | Template and site output |
 | `Factory.Evaluation` | Poppler/Chromium execution, bounded capture planning, image stitching, metrics, and reports | Processes and report output |
 | `Factory.Pipeline` | CLI dispatch, discovery, protected paths, staging, and promotion | Filesystem orchestration |
-| `site/runtime.js` | Shared affine rendering, evaluation-tile offsets, typed link activation, game affordances, and desktop/mobile interaction behavior | Browser DOM |
+| `site/runtime.js` | Viewport-sized SVG rendering, shared SVG/HTML camera, evaluation-tile offsets, typed link activation, game affordances, and desktop/mobile interaction behavior | Browser DOM |
 | `build-pdf-site.yml` | Isolated checkouts, toolchain, evaluation, and artifact upload | GitHub Actions |
 
 ## Safety Boundaries
@@ -171,6 +171,8 @@ The deployed product receives only the validated scene and its extracted assets.
 7. Link classification, highlighter opacity, and tiled evaluation policies are specified by the linked ADRs and BDRs below.
 
 [ADR 0011](/adr/0011-bounded-zoom-detail-evidence.md) adds inspection-only detail selection and capture within `Factory.Evaluation`. [BDR 0018](/bdr/0018-zoom-detail-evidence.md) owns the sampling policy and added report fields. The browser reuses its existing evaluation offsets; production site data and module ownership are unchanged.
+
+[ADR 0015](/adr/0015-viewport-sized-svg.md) moves the visual SVG out of the CSS-transformed HTML board. One camera update sets the viewport-sized SVG's coordinate window and the HTML overlay transform. The SVG owns the white source-board rectangle and ordered visuals; the HTML board owns text, links, and activated embeds. `site/styles.css` bounds the SVG to the viewport. [BDR 0022](/bdr/0022-bounded-zoom-rendering.md) defines the browser checks. The PR-only `visual-explanations/0022-bounded-zoom-rendering.svg` shows this control flow.
 
 ## Determinism and Compatibility
 

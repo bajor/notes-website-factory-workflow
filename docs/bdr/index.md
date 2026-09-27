@@ -21,3 +21,4 @@
 - [BDR 0019: Raster residual for untraceable strokes](/bdr/0019-raster-residual-for-untraceable-strokes.md) - Superseded by BDR 0020.
 - [BDR 0020: Smooth thin-stroke tracing](/bdr/0020-smooth-thin-stroke-tracing.md) - Superseded by BDR 0021.
 - [BDR 0021: Reconstructed sub-pixel strokes](/bdr/0021-reconstructed-sub-pixel-strokes.md) - Accepted. Redraw narrow single-color sub-pixel strokes as crisp opaque curves; keep other untraceable marks raster.
+- [BDR 0022: Bounded zoom rendering](/bdr/0022-bounded-zoom-rendering.md) - Accepted. Keep the visual surface within the viewport and preserve zoom anchors and overlay alignment.

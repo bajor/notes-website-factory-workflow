@@ -17,6 +17,8 @@ Use automatic soft-mask classification. Trace substantially transparent resource
 
 [ADR 0005](/adr/0005-preserve-low-alpha-soft-masks-as-raster.md) refines this decision for masks whose source samples are nonzero but all below the vector tracer's alpha cutoff; those masks remain raster.
 
+On 2026-09-26, [ADR 0015](/adr/0015-viewport-sized-svg.md) supersedes the board-sized browser surface with a viewport-sized SVG. The mixed representation and source-order decision remain in force.
+
 ## Rejected Alternatives
 
 - Preserve all 44 resources as raster: visually faithful at one scale but pixelated when zoomed and fails the vector-first goal.

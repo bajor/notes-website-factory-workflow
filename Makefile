@@ -48,6 +48,8 @@ test-runtime:
 	"$(CHROMIUM)" $(BROWSER_FLAGS) --window-size=800,600 --screenshot="$(RUNTIME_TEST)/light.png" "$(RUNTIME_TEST_URL)"
 	"$(CHROMIUM)" $(BROWSER_FLAGS) --force-dark-mode --enable-features=WebContentsForceDark --window-size=800,600 --screenshot="$(RUNTIME_TEST)/auto-dark.png" "$(RUNTIME_TEST_URL)"
 	cmp "$(RUNTIME_TEST)/light.png" "$(RUNTIME_TEST)/auto-dark.png"
+	cp generator/test/fixtures/runtime/zoom.html generator/test/fixtures/runtime/zoom.js "$(RUNTIME_TEST)"
+	zoom_dom="$$($(CHROMIUM) $(BROWSER_FLAGS) --dump-dom "file://$(abspath $(RUNTIME_TEST))/zoom.html")" && printf '%s' "$$zoom_dom" | grep -Fq 'data-zoom-test="passed"'
 
 validate-dist:
 	test -f "$(DIST)/index.html"
