@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Stop traced handwriting from flickering or disappearing at close zoom in WebKit browsers such as Safari.
 - Keep the SVG rendering surface screen-sized during close-up zoom to avoid oversized browser surfaces and disappearing artwork.
 - Redraw sub-pixel handwriting from downsampled Freeform artwork as crisp vector ink instead of a raster that blurs at high zoom.
 - Trace thin low-resolution lettering at its source weight as smooth curves instead of bold, blocky polygons.

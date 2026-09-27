@@ -15,3 +15,4 @@
 - [ADR 0013: Supersampled thin-stroke tracing](/adr/0013-supersampled-thin-stroke-tracing.md) - Accepted. Trace thin single-color components at source ink area as bounded cubic curves.
 - [ADR 0014: Reconstruct sub-pixel pen strokes](/adr/0014-reconstruct-sub-pixel-pen-strokes.md) - Accepted. Redraw narrow single-color untraceable strokes from a locally normalized field as opaque ink.
 - [ADR 0015: Viewport-sized SVG](/adr/0015-viewport-sized-svg.md) - Accepted. Zoom the SVG coordinate window instead of a board-sized CSS surface.
+- [ADR 0016: Transform traced paths individually](/adr/0016-transform-traced-paths-individually.md) - Accepted. Keep SVG containers in board units so WebKit does not cull traced strokes at close zoom.

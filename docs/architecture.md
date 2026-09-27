@@ -2,7 +2,7 @@
 type: Architecture View
 title: Notes website factory architecture
 description: Repository ownership, reusable workflow, module boundaries, and evaluation flow.
-timestamp: 2026-09-26
+timestamp: 2026-09-27
 ---
 # Architecture
 
@@ -173,6 +173,8 @@ The deployed product receives only the validated scene and its extracted assets.
 [ADR 0011](/adr/0011-bounded-zoom-detail-evidence.md) adds inspection-only detail selection and capture within `Factory.Evaluation`. [BDR 0018](/bdr/0018-zoom-detail-evidence.md) owns the sampling policy and added report fields. The browser reuses its existing evaluation offsets; production site data and module ownership are unchanged.
 
 [ADR 0015](/adr/0015-viewport-sized-svg.md) moves the visual SVG out of the CSS-transformed HTML board. One camera update sets the viewport-sized SVG's coordinate window and the HTML overlay transform. The SVG owns the white source-board rectangle and ordered visuals; the HTML board owns text, links, and activated embeds. `site/styles.css` bounds the SVG to the viewport. [BDR 0022](/bdr/0022-bounded-zoom-rendering.md) defines the browser checks. The PR-only `visual-explanations/0022-bounded-zoom-rendering.svg` shows this control flow.
+
+[ADR 0016](/adr/0016-transform-traced-paths-individually.md) keeps every SVG container in board units: `site/runtime.js` applies each vector artwork placement on its paths, and the group keeps opacity and clips. [BDR 0023](/bdr/0023-webkit-close-zoom-visibility.md) owns the resulting WebKit close-zoom contract. Module ownership and data flow are unchanged.
 
 ## Determinism and Compatibility
 
