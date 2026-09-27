@@ -279,16 +279,17 @@ emitImage height resources machine value = do
   name <- maybe (Left (PdfStructureError "Do expected an image resource name")) Right (nameValue value)
   resource <- maybe (Left (PdfStructureError ("missing image resource " <> nameText name))) Right (Map.lookup name (resourceImages resources))
   let graphics = machineGraphics machine
-      matrix = boardMatrix height (currentMatrix graphics)
+      matrix = imagePresentationMatrix (boardMatrix height (currentMatrix graphics))
       opacity = currentOpacity graphics
       clips = currentClips graphics
-      artwork shapes = do
-        placed <- traverse (traverse (boardPathData . placeVectorPath matrix)) shapes
-        Right (VectorArtworkNode placed opacity clips)
-  nodes <- case resource of
-    RasterResource identifier -> Right [ImageNode identifier matrix opacity clips]
-    VectorResource shapes -> (: []) <$> artwork shapes
-    MixedResource shapes identifier -> (: [ImageNode identifier matrix opacity clips]) <$> artwork shapes
+      -- ponytail: Each Do places its own board-point copy of a traced resource,
+      -- so a reused image XObject repeats its path data; share one placed path
+      -- through SVG <use> if consumer PDFs start reusing traced XObjects.
+      artwork shapes = VectorArtworkNode (map (fmap (placeVectorPath matrix)) shapes) opacity clips
+      nodes = case resource of
+        RasterResource identifier -> [ImageNode identifier matrix opacity clips]
+        VectorResource shapes -> [artwork shapes]
+        MixedResource shapes identifier -> [artwork shapes, ImageNode identifier matrix opacity clips]
   Right machine {machineNodes = reverse nodes <> machineNodes machine}
 
 setAlpha :: Resources -> Machine -> Object -> Either BuildError Machine

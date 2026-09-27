@@ -11,7 +11,6 @@
 module Factory.Domain
   ( Asset (..)
   , AssetId (..)
-  , BoardPathData
   , BoardSpace
   , BuildError (..)
   , ClipPath (..)
@@ -40,9 +39,6 @@ module Factory.Domain
   , VectorShape (..)
   , VideoId (..)
   , WebUrl (..)
-  , boardPathData
-  , boardPathText
-  , commandIsFinite
   , mkSiteTitle
   , sceneNodes
   , siteTitleText
@@ -95,9 +91,9 @@ data Matrix = Matrix
   deriving stock (Eq, Show)
 
 data PathCommand
-  = MoveTo (Point BoardSpace)
-  | LineTo (Point BoardSpace)
-  | CurveTo (Point BoardSpace) (Point BoardSpace) (Point BoardSpace)
+  = MoveTo {-# UNPACK #-} !(Point BoardSpace)
+  | LineTo {-# UNPACK #-} !(Point BoardSpace)
+  | CurveTo {-# UNPACK #-} !(Point BoardSpace) {-# UNPACK #-} !(Point BoardSpace) {-# UNPACK #-} !(Point BoardSpace)
   | ClosePath
   deriving stock (Eq, Show)
 
@@ -193,21 +189,18 @@ data VectorContour = VectorContour {-# UNPACK #-} !(Point ImageSpace) [VectorSeg
 newtype VectorPath = VectorPath {vectorContours :: [VectorContour]}
   deriving stock (Eq, Show)
 
--- | One fill of vector artwork. Tracing yields a 'VectorPath'; placement yields 'BoardPathData'.
+-- | One fill of vector artwork. Tracing yields a 'VectorPath'; placement yields board 'PathCommand's.
 data VectorShape path = VectorShape
   { vectorPath :: path
   , vectorColor :: Color
   , vectorOpacity :: Double
   }
-  deriving stock (Eq, Show, Functor, Foldable, Traversable)
-
--- | Nonempty SVG path data with finite board-point coordinates.
-newtype BoardPathData = BoardPathData {boardPathText :: Text}
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Functor)
 
 data SceneNode
-  = ImageNode AssetId Matrix Double [ClipPath]
-  | VectorArtworkNode [VectorShape BoardPathData] Double [ClipPath]
+  = -- | The matrix maps image samples, rows counted from the top, from the unit square onto the board.
+    ImageNode AssetId Matrix Double [ClipPath]
+  | VectorArtworkNode [VectorShape [PathCommand]] Double [ClipPath]
   | PathNode [PathCommand] PaintStyle [ClipPath]
   | TextNode TextRun [ClipPath]
   | LinkNode LinkTarget (Rect BoardSpace)
@@ -303,10 +296,12 @@ instance ToJSON PaintStyle where
           , "rule" .= case rule of NonZero -> ("nonzero" :: Text); EvenOdd -> "evenodd"
           ]
 
-instance ToJSON (VectorShape BoardPathData) where
+-- | Vector artwork paths are SVG path data in board points, which keeps them
+-- compact and lets the browser draw them without a scaling transform.
+instance ToJSON (VectorShape [PathCommand]) where
   toJSON shape =
     object
-      [ "path" .= boardPathText (vectorPath shape)
+      [ "path" .= svgPathData (vectorPath shape)
       , "color" .= vectorColor shape
       , "opacity" .= vectorOpacity shape
       ]
@@ -375,15 +370,8 @@ instance ToJSON (Scene 'Validated) where
        , "nodes" .= sceneContent scene
       ]
 
--- | Serialize placed commands as compact SVG path data.
---
--- Board points let the browser draw artwork without a scaling transform. The
--- text is built eagerly so placed geometry does not stay alive until emission.
-boardPathData :: [PathCommand] -> Either BuildError BoardPathData
-boardPathData commands
-  | null commands = Left (InvalidScene "vector artwork path is empty")
-  | not (all commandIsFinite commands) = Left (InvalidScene "vector artwork path is not finite")
-  | otherwise = Right $! BoardPathData (Text.concat (map commandText commands))
+svgPathData :: [PathCommand] -> Text
+svgPathData = Text.concat . map commandText
   where
     commandText command = case command of
       MoveTo point -> "M" <> pointText point
@@ -391,16 +379,6 @@ boardPathData commands
       CurveTo first second end -> Text.concat ["C", pointText first, " ", pointText second, " ", pointText end]
       ClosePath -> "Z"
     pointText (Point x y) = boardDecimal (unCoordinate x) <> "," <> boardDecimal (unCoordinate y)
-
-commandIsFinite :: PathCommand -> Bool
-commandIsFinite command = case command of
-  MoveTo point -> pointIsFinite point
-  LineTo point -> pointIsFinite point
-  CurveTo first second end -> all pointIsFinite [first, second, end]
-  ClosePath -> True
-  where
-    pointIsFinite (Point x y) = all (finiteDouble . unCoordinate) [x, y]
-    finiteDouble value = not (isNaN value || isInfinite value)
 
 -- | A thousandth of a point is under a tenth of a device pixel at the viewer's maximum zoom.
 boardDecimal :: Double -> Text

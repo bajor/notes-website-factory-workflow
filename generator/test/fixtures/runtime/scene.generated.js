@@ -36,7 +36,7 @@ export const scene = {
     {
       kind: 'image',
       asset: 'asymmetric-raster',
-      matrix: { a: 40, b: 10, c: -5, d: 20, e: 15, f: 25 },
+      matrix: { a: 40, b: 10, c: 5, d: -20, e: 10, f: 45 },
       opacity: 1,
       clips: [],
     },

@@ -96,7 +96,7 @@ function addImage(node, assets) {
   image.setAttribute('height', 1);
   image.setAttribute('opacity', node.opacity);
   image.setAttribute('preserveAspectRatio', 'none');
-  image.setAttribute('transform', cssMatrix(imagePresentationMatrix(node.matrix)));
+  image.setAttribute('transform', cssMatrix(node.matrix));
   const loaded = new Promise((resolve, reject) => {
     image.addEventListener('load', resolve, { once: true });
     image.addEventListener('error', () => reject(new Error(`Could not load ${asset.file}`)), { once: true });
@@ -367,17 +367,6 @@ function applyView() {
 
 function cssMatrix(matrix) {
   return `matrix(${matrix.a}, ${matrix.b}, ${matrix.c}, ${matrix.d}, ${matrix.e}, ${matrix.f})`;
-}
-
-function imagePresentationMatrix(matrix) {
-  return {
-    a: matrix.a,
-    b: matrix.b,
-    c: -matrix.c,
-    d: -matrix.d,
-    e: matrix.e + matrix.c,
-    f: matrix.f + matrix.d,
-  };
 }
 
 function cssColor(color) {

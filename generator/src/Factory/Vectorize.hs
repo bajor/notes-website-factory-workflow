@@ -398,13 +398,14 @@ curveShapes image emptyMessage traced
   | otherwise = Right shapes
   where
     shapes =
-      [ VectorShape
-          { vectorPath = curvePath (imageWidth image) (imageHeight image) contours
-          , vectorColor = styleColor (Style red green blue 255)
-          , vectorOpacity = 1
-          }
-      | ((red, green, blue), contours@(_ : _)) <- traced
-      ]
+      filter hasContours
+        [ VectorShape
+            { vectorPath = curvePath (imageWidth image) (imageHeight image) contours
+            , vectorColor = styleColor (Style red green blue 255)
+            , vectorOpacity = 1
+            }
+        | ((red, green, blue), contours) <- traced
+        ]
     pointCount = sum [length contour | (_, contours) <- traced, contour <- contours]
 
 smoothContours :: Image PixelRGBA8 -> Unboxed.Vector Int32 -> Int32 -> Component -> [[GridPoint]]
@@ -571,7 +572,7 @@ traceImage image
   where
     boundaries = collectBoundaries image
     contours = [(style, traceContours edges) | (style, edges) <- Map.toAscList boundaries]
-    shapes = map (shapeFromContours (imageWidth image) (imageHeight image)) contours
+    shapes = filter hasContours (map (shapeFromContours (imageWidth image) (imageHeight image)) contours)
     pointCount = sum [length contour | (_, styleContours) <- contours, contour <- styleContours]
 
 collectBoundaries :: Image PixelRGBA8 -> Map Style (Set Edge)
@@ -688,6 +689,10 @@ quantizeOpacity alpha
 
 quantize :: Int -> Word8 -> Word8
 quantize step value = fromIntegral (min 255 (((fromIntegral value + step `div` 2) `div` step) * step) :: Int)
+
+-- | Degenerate contours are dropped, so a shape can end up with nothing to draw.
+hasContours :: VectorShape VectorPath -> Bool
+hasContours = not . null . vectorContours . vectorPath
 
 shapeFromContours :: Int -> Int -> (Style, [[GridPoint]]) -> VectorShape VectorPath
 shapeFromContours width height (style, contours) =

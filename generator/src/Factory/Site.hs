@@ -149,14 +149,24 @@ styleIsFinite style =
 colorIsFinite :: Color -> Bool
 colorIsFinite color = all finite [colorRed color, colorGreen color, colorBlue color]
 
-vectorShapeIsFinite :: VectorShape BoardPathData -> Bool
-vectorShapeIsFinite shape = colorIsFinite (vectorColor shape) && finite (vectorOpacity shape)
+vectorShapeIsFinite :: VectorShape [PathCommand] -> Bool
+vectorShapeIsFinite shape = all commandIsFinite (vectorPath shape) && colorIsFinite (vectorColor shape) && finite (vectorOpacity shape)
 
-vectorShapeIsValid :: VectorShape BoardPathData -> Bool
-vectorShapeIsValid shape = colorIsValid (vectorColor shape) && unitInterval (vectorOpacity shape)
+vectorShapeIsValid :: VectorShape [PathCommand] -> Bool
+vectorShapeIsValid shape = not (null (vectorPath shape)) && colorIsValid (vectorColor shape) && unitInterval (vectorOpacity shape)
 
 clipIsFinite :: ClipPath -> Bool
 clipIsFinite = all commandIsFinite . clipCommands
+
+commandIsFinite :: PathCommand -> Bool
+commandIsFinite command = case command of
+  MoveTo point -> pointIsFinite point
+  LineTo point -> pointIsFinite point
+  CurveTo first second end -> all pointIsFinite [first, second, end]
+  ClosePath -> True
+
+pointIsFinite :: Point BoardSpace -> Bool
+pointIsFinite point = all (finite . unCoordinate) [pointX point, pointY point]
 
 imageCoversBoard :: Double -> Double -> SceneNode -> Bool
 imageCoversBoard boardWidth boardHeight (ImageNode _ matrix _ _) =

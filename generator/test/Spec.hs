@@ -9,7 +9,7 @@ import Data.List (isSuffixOf)
 import Data.Word (Word8)
 import Factory.Domain
 import Factory.Evaluation (CaptureTile (CaptureTile), EvaluationResult (evaluationPassed), bodyIsReady, calculateDifference, captureTiles, selectDetailRegions, stitchTiles)
-import Factory.Geometry (boardMatrix, identityMatrix, multiplyMatrix, placeVectorPath)
+import Factory.Geometry (boardMatrix, identityMatrix, imagePresentationMatrix, multiplyMatrix, placeVectorPath)
 import Factory.Interpreter (ColorSpaceResource (SupportedColorSpace, UnsupportedColorSpace), Resources (Resources), VisualResource (MixedResource, RasterResource, VectorResource), interpretOperators)
 import Factory.Pipeline (outputCompanionPaths, validateOutputPath)
 import Factory.Pdf (classifyUrl, rejectDecode, rgbaImage)
@@ -54,9 +54,11 @@ geometryTests =
     , testCase "board matrix flips the PDF vertical axis" $
         boardMatrix (Coordinate 100) (Matrix 1 0 0 1 10 20)
           @?= Matrix 1 0 0 (-1) 10 80
-    , testCase "traced paths are placed with image rows counted from the top" $
-        placeVectorPath (Matrix 2 0 1 3 10 20) (VectorPath [VectorContour (Point 0 0) [VectorLine (Point 1 1)]])
-          @?= [MoveTo (Point 11 23), LineTo (Point 12 20), ClosePath]
+    , testCase "image presentation counts sample rows from the top" $
+        imagePresentationMatrix (Matrix 2 0 1 3 10 20) @?= Matrix 2 0 (-1) (-3) 11 23
+    , testCase "traced contours become closed board paths" $
+        placeVectorPath (Matrix 2 0 0 3 10 20) (VectorPath [VectorContour (Point 0 0) [VectorLine (Point 1 0), VectorCubic (Point 1 1) (Point 0 1) (Point 0 0)]])
+          @?= [MoveTo (Point 10 20), LineTo (Point 12 20), CurveTo (Point 12 23) (Point 10 23) (Point 10 20), ClosePath]
     ]
 
 interpreterTests :: TestTree
@@ -65,18 +67,18 @@ interpreterTests =
     "operator interpreter"
     [ testCase "image operators emit a board-space image node" $
         interpretOperators pageHeight imageResources [operator Op_cm [2, 0, 0, 3, 10, 20], (Op_Do, [Name "Im1"])]
-          @?= Right [ImageNode (AssetId "asset-1") (Matrix 2 0 0 (-3) 10 80) 1 []]
+          @?= Right [ImageNode (AssetId "asset-1") (Matrix 2 0 0 3 10 77) 1 []]
     , testCase "mixed image operators preserve source order" $
         interpretOperators pageHeight mixedResources [(Op_Do, [Name "Raster"]), (Op_Do, [Name "Vector"])]
           @?= Right
-            [ ImageNode (AssetId "asset-1") (Matrix 1 0 0 (-1) 0 100) 1 []
+            [ ImageNode (AssetId "asset-1") (Matrix 1 0 0 1 0 99) 1 []
             , VectorArtworkNode [placedTestShape] 1 []
             ]
     , testCase "mixed artwork emits its vector shapes before its raster residual" $
         interpretOperators pageHeight (Resources (Map.singleton "Im1" (MixedResource [testVectorShape] (AssetId "asset-1"))) Map.empty Map.empty) [(Op_Do, [Name "Im1"])]
           @?= Right
             [ VectorArtworkNode [placedTestShape] 1 []
-            , ImageNode (AssetId "asset-1") (Matrix 1 0 0 (-1) 0 100) 1 []
+            , ImageNode (AssetId "asset-1") (Matrix 1 0 0 1 0 99) 1 []
             ]
     , testCase "a closed subpath remains the current point" $
         case interpretOperators pageHeight emptyResources closedCurveOperators of
@@ -341,15 +343,15 @@ linkTests =
             Just (Object target) -> KeyMap.lookup "kind" target @?= Just (String "game")
             value -> assertFailure ("unexpected target JSON: " <> show value)
           value -> assertFailure ("unexpected link JSON: " <> show value)
-    , testCase "board path data rounds to a thousandth of a point" $
-        fmap boardPathText (boardPathData [MoveTo (Point (Coordinate 12.3456) (Coordinate (-0.0004))), CurveTo (Point 1 2) (Point (Coordinate 3.1) 4) (Point (Coordinate 5.5) 6), ClosePath])
-          @?= Right "M12.346,0C1,2 3.1,4 5.5,6Z"
-    , testCase "board path data rejects non-finite coordinates" $
-        boardPathData [MoveTo (Point (Coordinate (1 / 0)) 0), ClosePath] @?= Left (InvalidScene "vector artwork path is not finite")
-    , testCase "vector artwork nodes serialize without a matrix" $
-        case toJSON (VectorArtworkNode [placedTestShape] 1 []) of
-          Object node -> KeyMap.member "matrix" node @?= False
-          value -> assertFailure ("unexpected artwork JSON: " <> show value)
+    , testCase "vector artwork paths serialize in thousandths of a board point" $
+        serializedPath (VectorShape [MoveTo (Point (Coordinate 12.3456) (Coordinate (-0.0004))), CurveTo (Point 1 2) (Point (Coordinate 3.1) 4) (Point (Coordinate 5.5) 6), ClosePath] (Color 0 0 0) 1)
+          @?= Just "M12.346,0C1,2 3.1,4 5.5,6Z"
+    , testCase "board serialization retains a one-pixel cutoff component at a tenth of a point per pixel" $
+        case traceImage (generateImage (\x _ -> PixelRGBA8 0 0 0 (if x == 10000 then 96 else 0)) 20000 1) of
+          Right [shape] ->
+            let placed = fmap (placeVectorPath (Matrix 2000 0 0 1 0 0)) shape
+             in assertBool "rounding did not collapse the contour" (maybe 0 pathTextArea (serializedPath placed) > 0)
+          result -> assertFailure ("unexpected trace result: " <> show result)
     ]
 
 validationTests :: TestTree
@@ -369,10 +371,9 @@ validationTests =
         case validateScene (sceneWith [] [VectorArtworkNode [placedTestShape] 1 []]) of
           Right _ -> pure ()
           Left buildError -> assertFailure ("unexpected validation error: " <> show buildError)
-    , testCase "rotated vector artwork is valid" $
-        case validateScene (sceneWith [] [VectorArtworkNode [placedShape (placeVectorPath (Matrix 0 1 (-1) 0 10 10) (vectorPath testVectorShape))] 1 []]) of
-          Right _ -> pure ()
-          Left buildError -> assertFailure ("unexpected validation error: " <> show buildError)
+    , testCase "non-finite vector artwork is rejected" $
+        validateScene (sceneWith [] [VectorArtworkNode [VectorShape [MoveTo (Point (Coordinate (1 / 0)) 0), ClosePath] (Color 0 0 0) 1] 1 []])
+          @?= Left (InvalidScene "scene contains a non-finite number")
     , testCase "an affine image bounding box does not imply full-board coverage" $
         case validateScene (sceneWith [testAsset] [ImageNode (assetId testAsset) (Matrix 100 100 100 0 0 0) 1 []]) of
           Right _ -> pure ()
@@ -517,11 +518,22 @@ testVectorShape :: VectorShape VectorPath
 testVectorShape = VectorShape (VectorPath [VectorContour (Point 0 0) [VectorLine (Point 1 0), VectorLine (Point 1 1)]]) (Color 0 0 0) 1
 
 -- | 'testVectorShape' placed by the board matrix of an identity CTM on a 100-point page.
-placedTestShape :: VectorShape BoardPathData
-placedTestShape = placedShape [MoveTo (Point 0 99), LineTo (Point 1 99), LineTo (Point 1 100), ClosePath]
+placedTestShape :: VectorShape [PathCommand]
+placedTestShape = VectorShape [MoveTo (Point 0 99), LineTo (Point 1 99), LineTo (Point 1 100), ClosePath] (Color 0 0 0) 1
 
-placedShape :: [PathCommand] -> VectorShape BoardPathData
-placedShape commands = either (error . show) id (traverse boardPathData (VectorShape commands (Color 0 0 0) 1))
+serializedPath :: VectorShape [PathCommand] -> Maybe Text.Text
+serializedPath shape = case toJSON shape of
+  Object json | Just (String path) <- KeyMap.lookup "path" json -> Just path
+  _ -> Nothing
+
+-- | Area enclosed by the polygon through every coordinate pair of serialized path data.
+pathTextArea :: Text.Text -> Double
+pathTextArea path = abs (sum [x * nextY - nextX * y | ((x, y), (nextX, nextY)) <- zip points (drop 1 points <> take 1 points)])
+  where
+    points = pairs (map (read . Text.unpack) (Text.words (Text.map separate path)))
+    separate character = if character `elem` ("MLCZ," :: String) then ' ' else character
+    pairs (x : y : rest) = (x, y) : pairs rest
+    pairs _ = []
 
 operator :: Op -> [Double] -> Operator
 operator name values = (name, map (Number . Scientific.fromFloatDigits) values)
@@ -720,17 +732,15 @@ dotOnLineImage = generateImage pixel 40 7
 
 type CurvePoint = (Double, Double)
 
--- | Start, handles, and end of each segment of the first contour, in source
--- pixels. A straight segment has its handles at its ends.
+-- | Start, handles, and end of each cubic segment of the first contour, in
+-- source pixels. Straight segments are skipped.
 cubicSegments :: Double -> Double -> VectorShape VectorPath -> [(CurvePoint, CurvePoint, CurvePoint, CurvePoint)]
 cubicSegments width height shape = case vectorContours (vectorPath shape) of
-  VectorContour start segments : _ -> zipWith segment (scale start : map (scale . endPoint) segments) segments
+  VectorContour start segments : _ -> [(scale from, scale first, scale second, scale end) | (from, VectorCubic first second end) <- zip (start : map endPoint segments) segments]
   [] -> []
   where
     endPoint (VectorLine end) = end
     endPoint (VectorCubic _ _ end) = end
-    segment from (VectorLine end) = (from, from, scale end, scale end)
-    segment from (VectorCubic first second end) = (from, scale first, scale second, scale end)
     scale (Point x y) = (unCoordinate x * width, unCoordinate y * height)
 
 -- | How far a segment's longer handle exceeds a third of the segment, in
