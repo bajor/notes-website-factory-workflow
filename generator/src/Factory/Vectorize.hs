@@ -20,17 +20,15 @@ import Data.ByteString (ByteString)
 import Data.Int (Int32)
 import Data.List (foldl', maximumBy, zip4)
 import Data.Map.Strict (Map)
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, mapMaybe)
 import Data.Ord (comparing)
 import Data.Set (Set)
 import Data.Text (Text)
 import Data.Word (Word8)
 import Factory.Domain
-import Numeric (showFFloat)
 import qualified Data.ByteString as ByteString
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import qualified Data.Text as Text
 import qualified Data.Vector as Boxed
 import qualified Data.Vector.Storable as Storable
 import qualified Data.Vector.Unboxed as Unboxed
@@ -366,7 +364,7 @@ alphaIndex image index = fromIntegral (imageData image Storable.! (index * 4 + 3
 -- Each component's contour level preserves its ink area, so strokes keep the
 -- source weight instead of the dilation of the pixel tracer's alpha floor.
 -- Contours become Catmull-Rom cubic curves through the simplified points.
-traceSmoothImage :: Image PixelRGBA8 -> Either BuildError [VectorShape]
+traceSmoothImage :: Image PixelRGBA8 -> Either BuildError [VectorShape VectorPath]
 traceSmoothImage image =
   curveShapes image "smoothed artwork contains no visible shapes" $
     [ ((red, green, blue), smoothContours image labels label component)
@@ -383,7 +381,7 @@ traceSmoothImage image =
 -- supersampled field by its local maximum brings every point of the stroke's
 -- ridge to about one, and the contour at 'reconstructionLevel' of that ridge
 -- follows the stroke continuously. The result is drawn as opaque ink.
-traceReconstructedImage :: Image PixelRGBA8 -> Either BuildError [VectorShape]
+traceReconstructedImage :: Image PixelRGBA8 -> Either BuildError [VectorShape VectorPath]
 traceReconstructedImage image =
   curveShapes image "reconstructed artwork contains no visible shapes" $
     [ (color, reconstructedContours image labels label component)
@@ -393,7 +391,7 @@ traceReconstructedImage image =
   where
     (labels, components) = labelComponents image
 
-curveShapes :: Image PixelRGBA8 -> Text -> [((Word8, Word8, Word8), [[GridPoint]])] -> Either BuildError [VectorShape]
+curveShapes :: Image PixelRGBA8 -> Text -> [((Word8, Word8, Word8), [[GridPoint]])] -> Either BuildError [VectorShape VectorPath]
 curveShapes image emptyMessage traced
   | null shapes = Left (UnsupportedImage emptyMessage)
   | pointCount > maximumVectorPoints = Left (UnsupportedImage "vector artwork exceeds the point complexity limit")
@@ -401,7 +399,7 @@ curveShapes image emptyMessage traced
   where
     shapes =
       [ VectorShape
-          { vectorPath = VectorPath (curvePathText (imageWidth image) (imageHeight image) contours)
+          { vectorPath = curvePath (imageWidth image) (imageHeight image) contours
           , vectorColor = styleColor (Style red green blue 255)
           , vectorOpacity = 1
           }
@@ -565,7 +563,7 @@ tileEdges width height level (FieldTile originX originY values) =
     sampleEdge sample = (fromIntegral sample + 0.5) / fromIntegral supersampling
     clampToImage (ContourPoint x y) = ContourPoint (max 0 (min (fromIntegral width) x)) (max 0 (min (fromIntegral height) y))
 
-traceImage :: Image PixelRGBA8 -> Either BuildError [VectorShape]
+traceImage :: Image PixelRGBA8 -> Either BuildError [VectorShape VectorPath]
 traceImage image
   | null shapes = Left (UnsupportedImage "vector artwork contains no visible shapes")
   | pointCount > maximumVectorPoints = Left (UnsupportedImage "vector artwork exceeds the point complexity limit")
@@ -691,10 +689,10 @@ quantizeOpacity alpha
 quantize :: Int -> Word8 -> Word8
 quantize step value = fromIntegral (min 255 (((fromIntegral value + step `div` 2) `div` step) * step) :: Int)
 
-shapeFromContours :: Int -> Int -> (Style, [[GridPoint]]) -> VectorShape
+shapeFromContours :: Int -> Int -> (Style, [[GridPoint]]) -> VectorShape VectorPath
 shapeFromContours width height (style, contours) =
   VectorShape
-    { vectorPath = VectorPath (pathText width height contours)
+    { vectorPath = polygonPath width height contours
     , vectorColor = styleColor style
     , vectorOpacity = styleOpacity style
     }
@@ -793,12 +791,12 @@ lineDistanceSquared (ContourPoint ax ay) (ContourPoint bx by) (ContourPoint px p
     cross = dy * offsetX - dx * offsetY
     lengthSquared = dx * dx + dy * dy
 
-pathText :: Int -> Int -> [[GridPoint]] -> Text
-pathText width height = Text.intercalate " " . map contourText
-  where
-    contourText [] = ""
-    contourText (point : rest) = "M" <> pointText point <> foldMap (("L" <>) . pointText) rest <> "Z"
-    pointText (ContourPoint x y) = decimal width (x / fromIntegral width) <> "," <> decimal height (y / fromIntegral height)
+polygonPath :: Int -> Int -> [[GridPoint]] -> VectorPath
+polygonPath width height = VectorPath . mapMaybe (polygonContour width height)
+
+polygonContour :: Int -> Int -> [GridPoint] -> Maybe VectorContour
+polygonContour _ _ [] = Nothing
+polygonContour width height (start : rest) = Just (VectorContour (imagePoint width height start) (map (VectorLine . imagePoint width height) rest))
 
 -- | Closed cubic curves through each contour's points.
 --
@@ -806,20 +804,24 @@ pathText width height = Text.intercalate " " . map contourText
 -- handles reach only a third of their own segment so short features beside
 -- long straight runs cannot loop. Turns sharper than 'minimumCornerCosine'
 -- remain corners.
-curvePathText :: Int -> Int -> [[GridPoint]] -> Text
-curvePathText width height = Text.intercalate " " . map contourText
+curvePath :: Int -> Int -> [[GridPoint]] -> VectorPath
+curvePath width height = VectorPath . mapMaybe curveContour
   where
-    contourText points@(first : _ : _ : _) =
-      "M" <> pointText first <> foldMap segmentText (zip4 points (rotate 1 points) tangents (rotate 1 tangents)) <> "Z"
+    curveContour points@(first : _ : _ : _) =
+      Just (VectorContour (point first) (map segment (zip4 points (rotate 1 points) tangents (rotate 1 tangents))))
       where
         tangents = zipWith3 tangentAt (rotate (-1) points) points (rotate 1 points)
-    contourText points = pathText width height [points]
-    segmentText (start, end, startTangent, endTangent) =
-      "C" <> pointText (handle start startTangent reach) <> " " <> pointText (handle end endTangent (negate reach)) <> " " <> pointText end
+    curveContour points = polygonContour width height points
+    segment (start, end, startTangent, endTangent) =
+      VectorCubic (point (handle start startTangent reach)) (point (handle end endTangent (negate reach))) (point end)
       where
         reach = sqrt (distanceSquared start end) / 3
+    point = imagePoint width height
     rotate steps points = let count = length points in take count (drop (steps `mod` count) (cycle points))
-    pointText (ContourPoint x y) = decimal width (x / fromIntegral width) <> "," <> decimal height (y / fromIntegral height)
+
+-- | Normalize a source-pixel contour point to the image unit square.
+imagePoint :: Int -> Int -> GridPoint -> Point ImageSpace
+imagePoint width height (ContourPoint x y) = Point (Coordinate (x / fromIntegral width)) (Coordinate (y / fromIntegral height))
 
 data Tangent = Corner | Direction Double Double
 
@@ -839,18 +841,6 @@ unitVector start@(ContourPoint startX startY) end@(ContourPoint endX endY)
 handle :: GridPoint -> Tangent -> Double -> GridPoint
 handle point Corner _ = point
 handle (ContourPoint x y) (Direction directionX directionY) reach = ContourPoint (x + directionX * reach) (y + directionY * reach)
-
-decimal :: Int -> Double -> Text
-decimal extent value = trimDecimal (Text.pack (showFFloat (Just precision) value ""))
-  where
-    precision = max minimumCoordinateDecimals (length (show extent) + subpixelDecimalPlaces)
-    minimumCoordinateDecimals = 6
-    subpixelDecimalPlaces = 2
-
-trimDecimal :: Text -> Text
-trimDecimal value =
-  let withoutZeros = Text.dropWhileEnd (== '0') value
-   in if Text.isSuffixOf "." withoutZeros then Text.dropEnd 1 withoutZeros else withoutZeros
 
 styleColor :: Style -> Color
 styleColor (Style red green blue _) = Color (channel red) (channel green) (channel blue)

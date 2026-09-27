@@ -89,8 +89,8 @@ type PdfAction = ExceptT BuildError IO
 data PreparedImage
   = PreparedJpeg Asset ByteString
   | PreparedPng Asset (Image PixelRGBA8)
-  | PreparedVector [VectorShape]
-  | PreparedMixed [VectorShape] Asset (Image PixelRGBA8)
+  | PreparedVector [VectorShape VectorPath]
+  | PreparedMixed [VectorShape VectorPath] Asset (Image PixelRGBA8)
 
 data ParsedPdf = ParsedPdf
   { parsedScene :: Scene 'Unvalidated

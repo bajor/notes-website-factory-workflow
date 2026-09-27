@@ -9,16 +9,22 @@ module Factory.Geometry
   , identityMatrix
   , multiplyMatrix
   , pdfPointToBoard
+  , placeVectorPath
   , rectangleToBoard
   ) where
 
 import Factory.Domain
   ( BoardSpace
   , Coordinate (Coordinate, unCoordinate)
+  , ImageSpace
   , Matrix (Matrix)
+  , PathCommand (ClosePath, CurveTo, LineTo, MoveTo)
   , PdfSpace
   , Point (Point)
   , Rect (Rect)
+  , VectorContour (VectorContour)
+  , VectorPath (vectorContours)
+  , VectorSegment (VectorCubic, VectorLine)
   )
 
 identityMatrix :: Matrix
@@ -47,6 +53,19 @@ pdfPointToBoard pageHeight (Point x y) =
 boardMatrix :: Coordinate PdfSpace -> Matrix -> Matrix
 boardMatrix (Coordinate pageHeight) (Matrix a b c d e f) =
   Matrix a (-b) c (-d) e (pageHeight - f)
+
+-- | Place traced image geometry with an image node's board matrix.
+--
+-- The matrix maps the PDF unit square, whose y axis grows up, so image rows
+-- counted from the top land at @1 - y@.
+placeVectorPath :: Matrix -> VectorPath -> [PathCommand]
+placeVectorPath matrix = concatMap contourCommands . vectorContours
+  where
+    contourCommands (VectorContour start segments) = MoveTo (place start) : map segmentCommand segments <> [ClosePath]
+    segmentCommand (VectorLine point) = LineTo (place point)
+    segmentCommand (VectorCubic first second end) = CurveTo (place first) (place second) (place end)
+    place :: Point ImageSpace -> Point BoardSpace
+    place (Point x y) = applyMatrix matrix (Point (coerceCoordinate x) (1 - coerceCoordinate y))
 
 rectangleToBoard :: Coordinate PdfSpace -> Rect PdfSpace -> Rect BoardSpace
 rectangleToBoard height (Rect x y width rectangleHeight) =

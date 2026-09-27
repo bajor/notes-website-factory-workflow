@@ -29,8 +29,7 @@ export const scene = {
     },
     {
       kind: 'vector-artwork',
-      shapes: [{ path: 'M0,0L1,0L0,1Z', color: { r: 1, g: 0, b: 0 }, opacity: 1 }],
-      matrix: { a: 0, b: 20, c: -30, d: 0, e: 80, f: 90 },
+      shapes: [{ path: 'M50,90L50,110L80,90Z', color: { r: 1, g: 0, b: 0 }, opacity: 1 }],
       opacity: 1,
       clips: [],
     },

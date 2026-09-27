@@ -40,8 +40,8 @@ data ColorSpaceResource
 
 data VisualResource
   = RasterResource AssetId
-  | VectorResource [VectorShape]
-  | MixedResource [VectorShape] AssetId
+  | VectorResource [VectorShape VectorPath]
+  | MixedResource [VectorShape VectorPath] AssetId
   deriving stock (Eq, Show)
 
 data GraphicsState = GraphicsState
@@ -282,10 +282,13 @@ emitImage height resources machine value = do
       matrix = boardMatrix height (currentMatrix graphics)
       opacity = currentOpacity graphics
       clips = currentClips graphics
-      nodes = case resource of
-        RasterResource identifier -> [ImageNode identifier matrix opacity clips]
-        VectorResource shapes -> [VectorArtworkNode shapes matrix opacity clips]
-        MixedResource shapes identifier -> [VectorArtworkNode shapes matrix opacity clips, ImageNode identifier matrix opacity clips]
+      artwork shapes = do
+        placed <- traverse (traverse (boardPathData . placeVectorPath matrix)) shapes
+        Right (VectorArtworkNode placed opacity clips)
+  nodes <- case resource of
+    RasterResource identifier -> Right [ImageNode identifier matrix opacity clips]
+    VectorResource shapes -> (: []) <$> artwork shapes
+    MixedResource shapes identifier -> (: [ImageNode identifier matrix opacity clips]) <$> artwork shapes
   Right machine {machineNodes = reverse nodes <> machineNodes machine}
 
 setAlpha :: Resources -> Machine -> Object -> Either BuildError Machine

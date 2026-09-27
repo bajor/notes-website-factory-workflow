@@ -5,10 +5,11 @@ module Main (main) where
 
 import Codec.Picture (Image, PixelRGB8 (PixelRGB8), PixelRGBA8 (PixelRGBA8), generateImage, pixelAt)
 import Data.Aeson (Value (Object, String), toJSON)
+import Data.List (isSuffixOf)
 import Data.Word (Word8)
 import Factory.Domain
 import Factory.Evaluation (CaptureTile (CaptureTile), EvaluationResult (evaluationPassed), bodyIsReady, calculateDifference, captureTiles, selectDetailRegions, stitchTiles)
-import Factory.Geometry (boardMatrix, identityMatrix, multiplyMatrix)
+import Factory.Geometry (boardMatrix, identityMatrix, multiplyMatrix, placeVectorPath)
 import Factory.Interpreter (ColorSpaceResource (SupportedColorSpace, UnsupportedColorSpace), Resources (Resources), VisualResource (MixedResource, RasterResource, VectorResource), interpretOperators)
 import Factory.Pipeline (outputCompanionPaths, validateOutputPath)
 import Factory.Pdf (classifyUrl, rejectDecode, rgbaImage)
@@ -53,6 +54,9 @@ geometryTests =
     , testCase "board matrix flips the PDF vertical axis" $
         boardMatrix (Coordinate 100) (Matrix 1 0 0 1 10 20)
           @?= Matrix 1 0 0 (-1) 10 80
+    , testCase "traced paths are placed with image rows counted from the top" $
+        placeVectorPath (Matrix 2 0 1 3 10 20) (VectorPath [VectorContour (Point 0 0) [VectorLine (Point 1 1)]])
+          @?= [MoveTo (Point 11 23), LineTo (Point 12 20), ClosePath]
     ]
 
 interpreterTests :: TestTree
@@ -66,12 +70,12 @@ interpreterTests =
         interpretOperators pageHeight mixedResources [(Op_Do, [Name "Raster"]), (Op_Do, [Name "Vector"])]
           @?= Right
             [ ImageNode (AssetId "asset-1") (Matrix 1 0 0 (-1) 0 100) 1 []
-            , VectorArtworkNode [testVectorShape] (Matrix 1 0 0 (-1) 0 100) 1 []
+            , VectorArtworkNode [placedTestShape] 1 []
             ]
     , testCase "mixed artwork emits its vector shapes before its raster residual" $
         interpretOperators pageHeight (Resources (Map.singleton "Im1" (MixedResource [testVectorShape] (AssetId "asset-1"))) Map.empty Map.empty) [(Op_Do, [Name "Im1"])]
           @?= Right
-            [ VectorArtworkNode [testVectorShape] (Matrix 1 0 0 (-1) 0 100) 1 []
+            [ VectorArtworkNode [placedTestShape] 1 []
             , ImageNode (AssetId "asset-1") (Matrix 1 0 0 (-1) 0 100) 1 []
             ]
     , testCase "a closed subpath remains the current point" $
@@ -170,27 +174,23 @@ vectorizationTests =
         classifyImage (Just (ByteString.pack (replicate 20 0 <> replicate 980 255))) @?= Right TraceAsVector
     , testCase "a filled rectangle produces one closed vector path" $
         case traceImage solidVectorImage of
-          Right [shape] ->
-            let path = unVectorPath (vectorPath shape)
-             in assertBool "trace has one closed contour" (Text.count "M" path == 1 && Text.isSuffixOf "Z" path)
+          Right [shape] -> contourCount shape @?= 1
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "transparent holes remain separate closed contours" $
         case traceImage vectorImageWithHole of
-          Right [shape] -> Text.count "M" (unVectorPath (vectorPath shape)) @?= 2
+          Right [shape] -> contourCount shape @?= 2
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "diagonal staircases contain fractional contour coordinates" $
         case traceImage diagonalStaircaseImage of
-          Right [shape] -> assertBool "trace is not constrained to source-pixel corners" (Text.isInfixOf "0.854248" (unVectorPath (vectorPath shape)))
+          Right [shape] -> assertBool "trace is not constrained to source-pixel corners" (hasCoordinate 0.854248 shape)
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "alpha ramps interpolate contour crossings" $
         case traceImage alphaRampImage of
-          Right [shape] -> assertBool "trace contains the interpolated crossing" (Text.isInfixOf "0.623047" (unVectorPath (vectorPath shape)))
+          Right [shape] -> assertBool "trace contains the interpolated crossing" (hasCoordinate 0.623047 shape)
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "cutoff-alpha pixels retain a closed trace" $
         case traceImage cutoffAlphaImage of
-          Right [shape] ->
-            let path = unVectorPath (vectorPath shape)
-             in assertBool "trace is nonempty and closed" (not (Text.null path) && Text.isSuffixOf "Z" path)
+          Right [shape] -> assertBool "trace is nonempty" (contourCount shape > 0)
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "mixed-opacity artwork retains a faint vector layer" $
         case traceImage mixedOpacityImage of
@@ -199,38 +199,34 @@ vectorizationTests =
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "faint strokes interpolate their outer boundary" $
         case traceImage faintStrokeImage of
-          Right (shape : _) -> assertBool "faint crossing is fractional" (Text.isInfixOf "0.189716" (unVectorPath (vectorPath shape)))
+          Right (shape : _) -> assertBool "faint crossing is fractional" (hasCoordinate 0.189716 shape)
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "isolated cutoff components survive beside opaque artwork" $
         case traceImage (cutoffComponentsImage 1) of
-          Right [shape] -> Text.count "M" (unVectorPath (vectorPath shape)) @?= 2
+          Right [shape] -> contourCount shape @?= 2
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "cutoff pairs do not degrade separate opaque contours" $
         case (traceImage (cutoffComponentsImage 0), traceImage (cutoffComponentsImage 2)) of
           (Right [opaqueShape], Right [mixedShape]) ->
-            assertBool "opaque contour is unchanged" (unVectorPath (vectorPath opaqueShape) `Text.isSuffixOf` unVectorPath (vectorPath mixedShape))
+            assertBool "opaque contour is unchanged" (vectorContours (vectorPath opaqueShape) `isSuffixOf` vectorContours (vectorPath mixedShape))
           result -> assertFailure ("unexpected trace results: " <> show result)
     , testCase "simplification retains a thin cutoff stroke's area" $
         case traceImage (generateImage (\_ _ -> PixelRGBA8 0 0 0 96) 3 1) of
           Right [shape] -> assertBool "stroke was not collapsed to a line" (traceArea shape > 0)
           result -> assertFailure ("unexpected trace result: " <> show result)
-    , testCase "wide-image serialization retains cutoff component area" $
-        case traceImage (generateImage (\x _ -> PixelRGBA8 0 0 0 (if x == 10000 then 96 else 0)) 20000 1) of
-          Right [shape] -> assertBool "normalized rounding did not collapse the contour" (traceArea shape > 0)
-          result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "sub-threshold edge samples contribute to interpolation" $
         case traceImage subThresholdRampImage of
-          Right [shape] -> assertBool "crossing uses source edge alpha" (Text.isInfixOf "0.411458" (unVectorPath (vectorPath shape)))
+          Right [shape] -> assertBool "crossing uses source edge alpha" (hasCoordinate 0.411458 shape)
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "adjacent opacity layers share a boundary" $
         case traceImage mixedOpacityImage of
           Right [faintShape, opaqueShape] ->
-            assertBool "both opacity layers use the source boundary" (Text.isInfixOf "0.272455" (unVectorPath (vectorPath faintShape)) && Text.isInfixOf "0.272455" (unVectorPath (vectorPath opaqueShape)))
+            assertBool "both opacity layers use the source boundary" (hasCoordinate 0.272455 faintShape && hasCoordinate 0.272455 opaqueShape)
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "adjacent styles share an interpolated boundary" $
         case traceImage adjacentStylesImage of
           Right [leftShape, rightShape] ->
-            assertBool ("both styles use the source boundary: " <> show [vectorPath leftShape, vectorPath rightShape]) (Text.isInfixOf "0.5" (unVectorPath (vectorPath leftShape)) && Text.isInfixOf "0.5" (unVectorPath (vectorPath rightShape)))
+            assertBool ("both styles use the source boundary: " <> show [vectorPath leftShape, vectorPath rightShape]) (hasCoordinate 0.5 leftShape && hasCoordinate 0.5 rightShape)
           result -> assertFailure ("unexpected trace result: " <> show result)
     , testCase "thick artwork is partitioned unchanged for pixel tracing" $
         assertBool "artwork stays whole pixel-tracing input" (partitionArtwork thickBlockImage == ArtworkPartition (Just thickBlockImage) Nothing Nothing Nothing)
@@ -263,8 +259,7 @@ vectorizationTests =
     , testCase "smoothed strokes are single closed cubic contours" $
         case traceSmoothImage thinLineImage of
           Right [shape] ->
-            let path = unVectorPath (vectorPath shape)
-             in assertBool ("path is one closed cubic contour: " <> show path) (Text.count "M" path == 1 && Text.isInfixOf "C" path && Text.isSuffixOf "Z" path && vectorOpacity shape == 1)
+            assertBool ("path is one closed cubic contour: " <> show (vectorPath shape)) (contourCount shape == 1 && hasCubic shape && vectorOpacity shape == 1)
           result -> assertFailure ("unexpected smooth trace result: " <> show result)
     , testCase "smoothed strokes preserve their ink area" $
         case traceSmoothImage thinLineImage of
@@ -275,25 +270,24 @@ vectorizationTests =
     , testCase "smoothed curve handles stay within their own segment" $
         case traceSmoothImage dotOnLineImage of
           Right [shape] ->
-            let segments = cubicSegments 40 7 (unVectorPath (vectorPath shape))
+            let segments = cubicSegments 40 7 shape
              in assertBool ("handle excess: " <> show (maximum (map handleExcess segments))) (all ((<= 1.0e-4) . handleExcess) segments)
           result -> assertFailure ("unexpected smooth trace result: " <> show result)
     , testCase "sharp stroke ends remain curve corners" $
         case traceSmoothImage thinLineImage of
           Right [shape] ->
-            assertBool "a segment starts without a handle" (any (\(start, handle, _, _) -> start == handle) (cubicSegments 12 5 (unVectorPath (vectorPath shape))))
+            assertBool "a segment starts without a handle" (any (\(start, handle, _, _) -> start == handle) (cubicSegments 12 5 shape))
           result -> assertFailure ("unexpected smooth trace result: " <> show result)
     , testCase "reconstructed strokes are single closed cubic contours of opaque ink" $
         case traceReconstructedImage thinStrokeImage of
           Right [shape] ->
-            let path = unVectorPath (vectorPath shape)
-             in assertBool ("path is one closed opaque cubic contour: " <> show path) (Text.count "M" path == 1 && Text.isInfixOf "C" path && Text.isSuffixOf "Z" path && vectorOpacity shape == 1)
+            assertBool ("path is one closed opaque cubic contour: " <> show (vectorPath shape)) (contourCount shape == 1 && hasCubic shape && vectorOpacity shape == 1)
           result -> assertFailure ("unexpected reconstruction result: " <> show result)
     , testCase "reconstructed strokes stay whole along uneven intensity" $
         case (traceImage unevenStrokeImage, traceReconstructedImage unevenStrokeImage) of
           (Right traced, Right [reconstructed]) ->
-            let pieces = sum (map (Text.count "M" . unVectorPath . vectorPath) traced)
-             in assertBool ("pixel tracing splits the stroke into " <> show pieces <> " pieces; reconstruction keeps one") (pieces > 1 && Text.count "M" (unVectorPath (vectorPath reconstructed)) == 1)
+            let pieces = sum (map contourCount traced)
+             in assertBool ("pixel tracing splits the stroke into " <> show pieces <> " pieces; reconstruction keeps one") (pieces > 1 && contourCount reconstructed == 1)
           result -> assertFailure ("unexpected trace results: " <> show result)
     , testCase "stroke reconstruction is deterministic" $
         traceReconstructedImage unevenStrokeImage @?= traceReconstructedImage unevenStrokeImage
@@ -347,6 +341,15 @@ linkTests =
             Just (Object target) -> KeyMap.lookup "kind" target @?= Just (String "game")
             value -> assertFailure ("unexpected target JSON: " <> show value)
           value -> assertFailure ("unexpected link JSON: " <> show value)
+    , testCase "board path data rounds to a thousandth of a point" $
+        fmap boardPathText (boardPathData [MoveTo (Point (Coordinate 12.3456) (Coordinate (-0.0004))), CurveTo (Point 1 2) (Point (Coordinate 3.1) 4) (Point (Coordinate 5.5) 6), ClosePath])
+          @?= Right "M12.346,0C1,2 3.1,4 5.5,6Z"
+    , testCase "board path data rejects non-finite coordinates" $
+        boardPathData [MoveTo (Point (Coordinate (1 / 0)) 0), ClosePath] @?= Left (InvalidScene "vector artwork path is not finite")
+    , testCase "vector artwork nodes serialize without a matrix" $
+        case toJSON (VectorArtworkNode [placedTestShape] 1 []) of
+          Object node -> KeyMap.member "matrix" node @?= False
+          value -> assertFailure ("unexpected artwork JSON: " <> show value)
     ]
 
 validationTests :: TestTree
@@ -363,11 +366,11 @@ validationTests =
         validateScene (sceneWith [testAsset] [])
           @?= Left (InvalidScene "scene contains an unreferenced asset")
     , testCase "vector-only scenes are valid" $
-        case validateScene (sceneWith [] [VectorArtworkNode [testVectorShape] identityMatrix 1 []]) of
+        case validateScene (sceneWith [] [VectorArtworkNode [placedTestShape] 1 []]) of
           Right _ -> pure ()
           Left buildError -> assertFailure ("unexpected validation error: " <> show buildError)
     , testCase "rotated vector artwork is valid" $
-        case validateScene (sceneWith [] [VectorArtworkNode [testVectorShape] (Matrix 0 1 (-1) 0 10 10) 1 []]) of
+        case validateScene (sceneWith [] [VectorArtworkNode [placedShape (placeVectorPath (Matrix 0 1 (-1) 0 10 10) (vectorPath testVectorShape))] 1 []]) of
           Right _ -> pure ()
           Left buildError -> assertFailure ("unexpected validation error: " <> show buildError)
     , testCase "an affine image bounding box does not imply full-board coverage" $
@@ -510,8 +513,15 @@ namedRgbResources = Resources Map.empty Map.empty (Map.singleton "Cs1" (Supporte
 unsupportedColorResources :: Resources
 unsupportedColorResources = Resources Map.empty Map.empty (Map.singleton "PatternSpace" UnsupportedColorSpace)
 
-testVectorShape :: VectorShape
-testVectorShape = VectorShape (VectorPath "M0,0L1,0L1,1Z") (Color 0 0 0) 1
+testVectorShape :: VectorShape VectorPath
+testVectorShape = VectorShape (VectorPath [VectorContour (Point 0 0) [VectorLine (Point 1 0), VectorLine (Point 1 1)]]) (Color 0 0 0) 1
+
+-- | 'testVectorShape' placed by the board matrix of an identity CTM on a 100-point page.
+placedTestShape :: VectorShape BoardPathData
+placedTestShape = placedShape [MoveTo (Point 0 99), LineTo (Point 1 99), LineTo (Point 1 100), ClosePath]
+
+placedShape :: [PathCommand] -> VectorShape BoardPathData
+placedShape commands = either (error . show) id (traverse boardPathData (VectorShape commands (Color 0 0 0) 1))
 
 operator :: Op -> [Double] -> Operator
 operator name values = (name, map (Number . Scientific.fromFloatDigits) values)
@@ -567,14 +577,26 @@ blankImage = generateImage (\_ _ -> PixelRGB8 255 255 255) 100 100
 solidVectorImage :: Image PixelRGBA8
 solidVectorImage = generateImage (\_ _ -> PixelRGBA8 0 0 0 255) 2 2
 
-traceArea :: VectorShape -> Double
+traceArea :: VectorShape VectorPath -> Double
 traceArea shape = abs (sum [x * nextY - nextX * y | ((x, y), (nextX, nextY)) <- zip points (drop 1 points <> take 1 points)])
   where
-    coordinates = Text.words (Text.map separate (unVectorPath (vectorPath shape)))
-    points = pairs (map (read . Text.unpack) coordinates)
-    separate character = if character `elem` ("MLZ," :: String) then ' ' else character
-    pairs (x : y : rest) = (x, y) : pairs rest
-    pairs _ = []
+    points = [(unCoordinate x, unCoordinate y) | Point x y <- shapePoints shape]
+
+shapePoints :: VectorShape VectorPath -> [Point ImageSpace]
+shapePoints shape = concat [start : concatMap segmentPoints segments | VectorContour start segments <- vectorContours (vectorPath shape)]
+  where
+    segmentPoints (VectorLine point) = [point]
+    segmentPoints (VectorCubic first second end) = [first, second, end]
+
+contourCount :: VectorShape VectorPath -> Int
+contourCount = length . vectorContours . vectorPath
+
+-- | Whether a traced point has this normalized coordinate at six decimal places.
+hasCoordinate :: Double -> VectorShape VectorPath -> Bool
+hasCoordinate value shape = any (\coordinate -> abs (coordinate - value) <= 5.0e-7) (concat [[unCoordinate x, unCoordinate y] | Point x y <- shapePoints shape])
+
+hasCubic :: VectorShape VectorPath -> Bool
+hasCubic shape = not (null [() | VectorContour _ segments <- vectorContours (vectorPath shape), VectorCubic {} <- segments])
 
 vectorImageWithHole :: Image PixelRGBA8
 vectorImageWithHole = generateImage pixel 3 3
@@ -698,37 +720,31 @@ dotOnLineImage = generateImage pixel 40 7
 
 type CurvePoint = (Double, Double)
 
--- | Start, handles, and end of each cubic segment of a single closed contour,
--- in source pixels.
-cubicSegments :: Double -> Double -> Text.Text -> [(CurvePoint, CurvePoint, CurvePoint, CurvePoint)]
-cubicSegments width height path = zipWith segment (start : map endPoint curves) curves
+-- | Start, handles, and end of each segment of the first contour, in source
+-- pixels. A straight segment has its handles at its ends.
+cubicSegments :: Double -> Double -> VectorShape VectorPath -> [(CurvePoint, CurvePoint, CurvePoint, CurvePoint)]
+cubicSegments width height shape = case vectorContours (vectorPath shape) of
+  VectorContour start segments : _ -> zipWith segment (scale start : map (scale . endPoint) segments) segments
+  [] -> []
   where
-    chunks = Text.splitOn "C" (Text.filter (/= 'Z') path)
-    start = case numbers (Text.drop 1 (head chunks)) of
-      [x, y] -> (x, y)
-      _ -> (0, 0)
-    curves = map numbers (drop 1 chunks)
-    endPoint values = case values of
-      [_, _, _, _, x, y] -> (x, y)
-      _ -> (0, 0)
-    segment from values = case values of
-      [firstX, firstY, secondX, secondY, x, y] -> (from, (firstX, firstY), (secondX, secondY), (x, y))
-      _ -> (from, from, from, from)
-    numbers = scale . map (read . Text.unpack) . Text.words . Text.map (\character -> if character == ',' then ' ' else character)
-    scale values = zipWith (*) (cycle [width, height]) values
+    endPoint (VectorLine end) = end
+    endPoint (VectorCubic _ _ end) = end
+    segment from (VectorLine end) = (from, from, scale end, scale end)
+    segment from (VectorCubic first second end) = (from, scale first, scale second, scale end)
+    scale (Point x y) = (unCoordinate x * width, unCoordinate y * height)
 
 -- | How far a segment's longer handle exceeds a third of the segment, in
--- source pixels; serialized coordinates round to about 1e-5 pixels.
+-- source pixels.
 handleExcess :: (CurvePoint, CurvePoint, CurvePoint, CurvePoint) -> Double
 handleExcess (start, firstHandle, secondHandle, end) = max (distance start firstHandle) (distance end secondHandle) - distance start end / 3
   where
     distance (ax, ay) (bx, by) = sqrt ((bx - ax) ^ (2 :: Int) + (by - ay) ^ (2 :: Int))
 
 -- | Area enclosed by a single closed cubic contour, in square source pixels.
-curveArea :: Double -> Double -> VectorShape -> Double
+curveArea :: Double -> Double -> VectorShape VectorPath -> Double
 curveArea width height shape = abs (sum [x * nextY - nextX * y | ((x, y), (nextX, nextY)) <- zip points (drop 1 points <> take 1 points)]) / 2
   where
-    points = concatMap sampleSegment (cubicSegments width height (unVectorPath (vectorPath shape)))
+    points = concatMap sampleSegment (cubicSegments width height shape)
     sampleSegment (start, firstHandle, secondHandle, end) = [bezier start firstHandle secondHandle end (fromIntegral step / 16) | step <- [0 .. 15 :: Int]]
     bezier (ax, ay) (bx, by) (cx, cy) (dx, dy) t =
       let u = 1 - t
