@@ -2,8 +2,9 @@
 type: PRD
 title: Reusable Freeform site factory
 description: Requirements for source-independent, visually validated Pages artifacts.
-status: Accepted
+status: Superseded
 supersedes: "0001"
+superseded_by: "0011"
 timestamp: 2026-08-23
 ---
 # Reusable Freeform Site Factory

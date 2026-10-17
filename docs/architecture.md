@@ -2,7 +2,7 @@
 type: Architecture View
 title: Notes website factory architecture
 description: Repository ownership, reusable workflow, module boundaries, and evaluation flow.
-timestamp: 2026-09-27
+timestamp: 2026-10-17
 ---
 # Architecture
 
@@ -11,8 +11,8 @@ timestamp: 2026-09-27
 ```mermaid
 flowchart LR
   subgraph Consumer[Consumer repository]
-    PDF[One-page Freeform PDF]
-    Caller[Caller workflow and site title]
+    Source[One PDF or SVG source document]
+    Caller[Caller workflow, site title, and optional source directory]
     Deploy[Pages deployment job]
   end
 
@@ -28,7 +28,7 @@ flowchart LR
   Pages[Consumer GitHub Pages]
 
   Caller --> Workflow
-  PDF --> Workflow
+  Source --> Workflow
   Workflow --> Generator
   Viewer --> Generator
   Generator --> Oracle
@@ -37,7 +37,7 @@ flowchart LR
   PagesArtifact --> Deploy --> Pages
 ```
 
-The consumer controls content identity and deployment authority. The factory controls every transformation from PDF objects to a validated browser product. The reusable workflow has only `contents: read`; it cannot deploy or request an OpenID Connect token.
+The consumer controls content identity and deployment authority. The factory controls every transformation from the source document to a validated browser product. The reusable workflow has only `contents: read`; it cannot deploy or request an OpenID Connect token.
 
 ## Checkout and Build Sequence
 
@@ -51,15 +51,16 @@ sequenceDiagram
   participant E as Evaluator
   participant A as Artifact store
 
-  C->>W: site-title
+  C->>W: site-title and optional source-directory
   W->>S: Checkout caller commit
   W->>F: Checkout job.workflow_repository at job.workflow_sha
+  W->>S: Resolve source-directory inside the checkout
   W->>G: Test factory fixture
   W->>G: Inspect source only
-  G->>S: Discover exactly one PDF
+  G->>S: Discover exactly one PDF or SVG
   G->>F: Read shared templates
   G-->>W: Validated static site
-  W->>E: Compare Poppler and Chromium at 18 and 72 DPI
+  W->>E: Compare the reference and Chromium at 18 and 72 DPI
    E->>E: Capture bounded tiles and stitch oversized scales
    E->>E: Select and capture bounded zoom-detail evidence
   E-->>A: pdf-site-evaluation
@@ -72,7 +73,23 @@ sequenceDiagram
 
 Separate checkout and output roots prevent a factory fixture from contaminating consumer discovery. `job.workflow_sha` prevents a workflow loaded from one commit from independently checking out different generator code, including when callers use `@main`.
 
-## Production Data Flow
+## Source Dispatch
+
+```mermaid
+flowchart LR
+  Discover[discoverSingleSource] --> Kind{Extension}
+  Kind -->|.pdf| Pdf[Factory.Pdf<br/>parse, trace, and extract]
+  Kind -->|.svg| Svg[Factory.Svg<br/>validate and copy unchanged]
+  Pdf --> Raw[Scene Unvalidated]
+  Svg --> Raw
+  Raw --> Validate[validateScene] --> Emit[Static JavaScript scene and assets] --> Browser[Viewer]
+  Pdf -. evaluation .-> Poppler[Poppler reference]
+  Svg -. evaluation .-> Direct[Chromium direct SVG reference]
+```
+
+`Factory.Pipeline.loadSource` is the only place that branches on the source format. An SVG source becomes one SVG document node covering the board and the file `assets/board.svg`, which is byte-identical to the source. The viewer draws it as an isolated SVG image in board units. [ADR 0017](/adr/0017-isolated-svg-source-images.md) owns this design, and the [SVG support profile](/svg-support.md) owns accepted content. Everything after `validateScene` is shared by both formats.
+
+## PDF Data Flow
 
 ```mermaid
 flowchart TD
@@ -139,7 +156,7 @@ flowchart TD
   Raw --> Validate --> Valid --> Emit --> Affine --> Browser
 ```
 
-The deployed product receives only the validated scene and its extracted assets. Source PDFs and evaluation images stay in build space. The [support profile](/pdf-investigation.md) owns parsing compatibility and classification details; accepted BDRs own observable output behavior.
+For a PDF source, the deployed product receives only the validated scene and its extracted assets. Source PDFs and evaluation images stay in build space. The [support profile](/pdf-investigation.md) owns parsing compatibility and classification details; accepted BDRs own observable output behavior.
 
 [BDR 0017](/bdr/0017-preserve-local-traced-detail.md) owns layer-aware contour interpolation and local simplification; `Factory.Vectorize` retains that responsibility without changing the scene schema or browser renderer.
 
@@ -149,21 +166,22 @@ The deployed product receives only the validated scene and its extracted assets.
 
 | Module | Responsibility | Effects |
 | --- | --- | --- |
-| `Factory.Domain` | Coordinates, matrices, color spaces, paint styles, nodes, typed link targets, assets, titles, validation phases, and errors | None |
+| `Factory.Domain` | Source documents, coordinates, matrices, color spaces, paint styles, nodes, typed link targets, assets, titles, validation phases, and errors | None |
 | `Factory.Geometry` | PDF-to-board transformations, image presentation, traced-path placement, and affine matrix operations | None |
 | `Factory.Interpreter` | PDF operator state machine and scene-node emission, including paired vector and residual raster nodes | None |
 | `Factory.Vectorize` | Image classification, highlighter opacity profiling, traceable-component partitioning, quantization, contour tracing, supersampled thin-stroke tracing, sub-pixel stroke reconstruction, and simplification | None |
 | `Factory.Pdf` | PDF objects, streams, resources, annotations, structural URL classification, and raster and residual materialization | File input and asset output |
+| `Factory.Svg` | SVG parsing, board-size interpretation, self-containment validation, and byte-identical board copy | File input and asset output |
 | `Factory.Site` | Scene validation and deterministic site emission | Template and site output |
-| `Factory.Evaluation` | Poppler/Chromium execution, bounded capture planning, image stitching, metrics, and reports | Processes and report output |
-| `Factory.Pipeline` | CLI dispatch, discovery, protected paths, staging, and promotion | Filesystem orchestration |
-| `site/runtime.js` | Viewport-sized SVG rendering, shared SVG/HTML camera, evaluation-tile offsets, typed link activation, game affordances, and desktop/mobile interaction behavior | Browser DOM |
-| `build-pdf-site.yml` | Isolated checkouts, toolchain, evaluation, and artifact upload | GitHub Actions |
+| `Factory.Evaluation` | Poppler and Chromium reference rendering, Chromium site capture, bounded capture planning, image stitching, metrics, and reports | Processes and report output |
+| `Factory.Pipeline` | CLI dispatch, source discovery and format dispatch, protected paths, staging, and promotion | Filesystem orchestration |
+| `site/runtime.js` | Viewport-sized SVG rendering, isolated SVG documents, shared SVG/HTML camera, evaluation-tile offsets, typed link activation, game affordances, and desktop/mobile interaction behavior | Browser DOM |
+| `build-pdf-site.yml` | Isolated checkouts, source-directory resolution, toolchain, evaluation, and artifact upload | GitHub Actions |
 
 ## Safety Boundaries
 
-1. `discoverSinglePdf` scans only the consumer source root and requires one non-symlink PDF with one page.
-2. The parser and `validateScene` reject unsupported source structures, invalid scene values, and full-board raster output.
+1. The workflow resolves `source-directory` with `realpath` and rejects a directory outside the consumer checkout. `discoverSingleSource` scans only that directory and requires one non-symlink PDF or SVG; a PDF must have one page.
+2. The PDF parser, the SVG validator, and `validateScene` reject unsupported source structures, invalid scene values, and full-board raster output.
 3. Removable paths are canonicalized, reject symlink targets and unresolved symlink parents, and cannot overlap protected inputs or independently owned outputs.
 4. Output is staged in `DIST.building`, promoted through `DIST.previous`, and checked for product files, relative references, no PDF, and no Canvas fallback.
 5. Evaluation inputs remain removable build artifacts; process failures abort the build.
@@ -174,6 +192,8 @@ The deployed product receives only the validated scene and its extracted assets.
 
 [ADR 0015](/adr/0015-viewport-sized-svg.md) moves the visual SVG out of the CSS-transformed HTML board. One camera update sets the viewport-sized SVG's coordinate window and the HTML overlay transform. The SVG owns the white source-board rectangle and ordered visuals; the HTML board owns text, links, and activated embeds. `site/styles.css` bounds the SVG to the viewport. [BDR 0022](/bdr/0022-bounded-zoom-rendering.md) defines the browser checks. The PR-only `visual-explanations/0022-bounded-zoom-rendering.svg` shows this control flow.
 
+[ADR 0017](/adr/0017-isolated-svg-source-images.md) adds SVG sources. `Factory.Pipeline` dispatches by format, `Factory.Svg` validates and copies the file, `Factory.Domain` adds the SVG document node, and `site/runtime.js` draws it. `Factory.Evaluation` takes a reference, either Poppler or a Chromium reference page that draws the source SVG directly, and shares tiled capture between that page and the site. [BDR 0024](/bdr/0024-pdf-and-svg-build-contract.md) defines the behavior. The PR-only `visual-explanations/0024-pdf-and-svg-sources.svg` shows this data flow.
+
 [ADR 0016](/adr/0016-board-point-vector-artwork.md) moves image presentation and vector artwork placement from the browser into the generator. `Factory.Vectorize` returns image-space contours, `Factory.Interpreter` places them with the `Factory.Geometry` presentation matrix it also gives raster images, `validateScene` checks the placed paths, and `Factory.Domain` serializes board-point path data; `site/runtime.js` applies raster matrices unchanged. [BDR 0023](/bdr/0023-webkit-close-zoom-visibility.md) owns the resulting WebKit close-zoom contract. The PR-only `visual-explanations/0023-board-point-artwork.svg` shows this data flow.
 
 ## Determinism and Compatibility
@@ -182,7 +202,7 @@ The deployed product receives only the validated scene and its extracted assets.
 - The dependency solver, GHC, Cabal, and third-party actions are pinned.
 - Poppler and Chrome revisions can change antialiasing, so fixed tolerances replace exact pixel equality.
 - Browser evaluation tiles depend only on output dimensions and fixed `8192`-pixel horizontal and `4096`-pixel vertical boundaries; tile files are removed after stitching.
-- `site-title`, `github-pages`, `pdf-site-evaluation`, and generated filenames are public contracts.
+- `site-title`, the optional `source-directory`, `github-pages`, `pdf-site-evaluation`, and generated filenames, including `assets/board.svg` for SVG sources, are public contracts. `build-pdf-site.yml` and `pdf-site-evaluation` keep names chosen before SVG sources existed.
 - A moving `main` reference intentionally updates consumers on their next run; factory CI exercises the actual reusable workflow before merge.
 
-[ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [ADR 0004](/adr/0004-linked-game-cards.md) owns measured mask and game-link trust boundaries. [ADR 0006](/adr/0006-tile-oversized-browser-evaluations.md) owns bounded evaluation capture, [ADR 0009](/adr/0009-opaque-highlighter-strokes.md) owns the low-alpha highlighter exception, [ADR 0012](/adr/0012-component-raster-residual.md) owns the traced-artwork raster residual, [ADR 0013](/adr/0013-supersampled-thin-stroke-tracing.md) owns supersampled thin-stroke tracing, and [ADR 0014](/adr/0014-reconstruct-sub-pixel-pen-strokes.md) owns sub-pixel stroke reconstruction. [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md), [BDR 0006](/bdr/0006-expanded-freeform-graphics-output.md), [BDR 0007](/bdr/0007-tiled-visual-evaluation.md), [BDR 0008](/bdr/0008-fixed-light-viewer.md), [BDR 0011](/bdr/0011-opaque-highlighter-output.md), [BDR 0013](/bdr/0013-remove-topic-navigation.md), [BDR 0017](/bdr/0017-preserve-local-traced-detail.md), and [BDR 0021](/bdr/0021-reconstructed-sub-pixel-strokes.md) own current observable behavior.
+[ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [ADR 0004](/adr/0004-linked-game-cards.md) owns measured mask and game-link trust boundaries. [ADR 0006](/adr/0006-tile-oversized-browser-evaluations.md) owns bounded evaluation capture, [ADR 0009](/adr/0009-opaque-highlighter-strokes.md) owns the low-alpha highlighter exception, [ADR 0012](/adr/0012-component-raster-residual.md) owns the traced-artwork raster residual, [ADR 0013](/adr/0013-supersampled-thin-stroke-tracing.md) owns supersampled thin-stroke tracing, and [ADR 0014](/adr/0014-reconstruct-sub-pixel-pen-strokes.md) owns sub-pixel stroke reconstruction, and [ADR 0017](/adr/0017-isolated-svg-source-images.md) owns SVG sources. [BDR 0024](/bdr/0024-pdf-and-svg-build-contract.md), [BDR 0006](/bdr/0006-expanded-freeform-graphics-output.md), [BDR 0007](/bdr/0007-tiled-visual-evaluation.md), [BDR 0008](/bdr/0008-fixed-light-viewer.md), [BDR 0011](/bdr/0011-opaque-highlighter-output.md), [BDR 0013](/bdr/0013-remove-topic-navigation.md), [BDR 0017](/bdr/0017-preserve-local-traced-detail.md), and [BDR 0021](/bdr/0021-reconstructed-sub-pixel-strokes.md) own current observable behavior.

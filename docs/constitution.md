@@ -1,9 +1,9 @@
 ---
 type: Constitution
 title: Notes Website Factory constitution
-description: Foundational scope and constraints for the reusable Freeform site factory.
+description: Foundational scope and constraints for the reusable PDF and SVG notes site factory.
 status: Amended
-timestamp: 2026-08-20
+timestamp: 2026-10-17
 ---
 # Constitution
 
@@ -67,3 +67,11 @@ The generated board may render a positively identified Freeform highlighter stro
 Accepted on 2026-09-16.
 
 The factory must not detect highlighter frames, render topic crops, run optical character recognition, emit topic metadata, or provide topic navigation controls. Amendment 2 is superseded. The topic-recognition portion of Amendment 3 is superseded; its opaque-highlighter rendering exception remains in force.
+
+## Amendment 5: SVG Source Documents
+
+Accepted on 2026-10-17.
+
+A consumer may supply exactly one self-contained SVG instead of one one-page PDF. This amends Product and Amendment 1 only in what the consumer owns: one source document in either format. PDF sources keep every existing rule.
+
+For an SVG source, the deployed product contains the validated source SVG, copied byte for byte, and the browser draws it as an isolated image. The factory does not trace, rewrite, or inline it. SVG parsing is Haskell using `xml-conduit` and project-owned validation. Content that an isolated image would drop without an error, such as scripts, hyperlinks, and external resources, fails explicitly. The evaluation oracle for an SVG source is Chromium's direct rendering of the source, compared under the same fixed thresholds and scales.

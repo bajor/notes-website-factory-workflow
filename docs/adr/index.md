@@ -16,3 +16,4 @@
 - [ADR 0014: Reconstruct sub-pixel pen strokes](/adr/0014-reconstruct-sub-pixel-pen-strokes.md) - Accepted. Redraw narrow single-color untraceable strokes from a locally normalized field as opaque ink.
 - [ADR 0015: Viewport-sized SVG](/adr/0015-viewport-sized-svg.md) - Accepted. Zoom the SVG coordinate window instead of a board-sized CSS surface.
 - [ADR 0016: Board-point vector artwork](/adr/0016-board-point-vector-artwork.md) - Accepted. Place traced artwork in board points in the generator so WebKit does not cull strokes at close zoom.
+- [ADR 0017: Render SVG sources as isolated images](/adr/0017-isolated-svg-source-images.md) - Accepted. Validate a self-contained SVG, ship it unchanged, and evaluate it against Chromium.
