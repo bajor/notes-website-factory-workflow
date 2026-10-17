@@ -12,3 +12,4 @@ jobs:
     uses: ./.github/workflows/build-pdf-site.yml
     with:
       site-title: Notes Website Factory Fixture
+      source-directory: generator/test/fixtures/pdf

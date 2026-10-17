@@ -1,4 +1,4 @@
-name: Build PDF Site
+name: Build Notes Site
 
 on:
   workflow_call:
@@ -7,6 +7,11 @@ on:
         description: Browser title and accessible name for the zoomable board.
         required: true
         type: string
+      source-directory:
+        description: Consumer-relative directory searched for the one PDF or SVG source. Defaults to the repository root.
+        required: false
+        type: string
+        default: '.'
 
 permissions:
   contents: read
@@ -26,6 +31,21 @@ jobs:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
           path: factory
+
+      - name: Resolve consumer source
+        id: consumer-source
+        env:
+          SOURCE_DIRECTORY: ${{ inputs.source-directory }}
+        run: |
+          root="$(realpath -e source)"
+          if ! resolved="$(realpath -e -- "source/${SOURCE_DIRECTORY}")" || [ ! -d "$resolved" ]; then
+            echo "source-directory must name an existing directory in the consumer repository" >&2
+            exit 1
+          fi
+          case "$resolved/" in
+            "$root/"*) echo "path=$resolved" >> "$GITHUB_OUTPUT" ;;
+            *) echo "source-directory must stay inside the consumer repository" >&2; exit 1 ;;
+          esac
 
       - name: Set up Haskell
         uses: haskell-actions/setup@6037f33647c3f17758a2356c80fc4a53d7e0685d # v2
@@ -56,11 +76,11 @@ jobs:
         run: make test
         working-directory: factory
 
-      - name: Inspect consumer PDF
+      - name: Inspect consumer source
         run: make inspect
         working-directory: factory
         env:
-          SOURCE: ${{ github.workspace }}/source
+          SOURCE: ${{ steps.consumer-source.outputs.path }}
           WORK: ${{ github.workspace }}/output/work
 
       - name: Build and evaluate consumer site
@@ -71,7 +91,7 @@ jobs:
           DIST: ${{ github.workspace }}/output/site
           REPORT: ${{ github.workspace }}/output/evaluation
           SITE_TITLE: ${{ inputs.site-title }}
-          SOURCE: ${{ github.workspace }}/source
+          SOURCE: ${{ steps.consumer-source.outputs.path }}
           TEMPLATES: ${{ github.workspace }}/factory/site
           WORK: ${{ github.workspace }}/output/work
 
