@@ -24,13 +24,13 @@ Other units, such as `em`, fail. The width and height must be finite and positiv
 
 ## Accepted Content
 
-The file must be well-formed XML whose root element is `svg` in the `http://www.w3.org/2000/svg` namespace. Internal DTD entities are expanded up to the default size limit of `xml-conduit`.
+The file must be well-formed XML whose root element is `svg` in the `http://www.w3.org/2000/svg` namespace. Internal DTD entities are expanded up to the default size limit of `xml-conduit`, except in namespace declarations: `xml-conduit` keeps such a reference as literal text while browsers expand it, so a namespace declared through an entity fails.
 
-Everything a browser draws inside an SVG image is accepted, including shapes, paths, text, gradients, patterns, filters, masks, clip paths, `<use>`, `<style>` rules, animations, and embedded images. References must stay inside the file: every `href` and `xlink:href` value, and the target of every CSS `url(...)` in an attribute or `<style>` element, must be a same-document fragment such as `#gradient` or a `data:` URI.
+Other content that a browser draws inside an SVG image is accepted, including shapes, paths, text, gradients, patterns, filters, masks, clip paths, `<use>`, `<style>` rules, animations, and embedded images. References must stay inside the file: every `href` and `xlink:href` value, and the target of every CSS `url(...)` in an attribute or `<style>` element, must be a same-document fragment such as `#gradient` or a `data:` URI. A `<use>` element must reference a fragment.
 
 ## Rejected Content
 
-A browser draws an SVG image without scripts, interaction, or external files, and it drops them without reporting an error. The build therefore fails with a typed `unsupported SVG content` error when the SVG contains any of the following:
+A browser draws an SVG image without scripts, interaction, or external files, and it drops them without reporting an error. The build therefore fails with a typed `unsupported SVG content` error when the SVG contains any of the following. Element names are matched in every namespace, because browsers also run XHTML `script` elements and apply XHTML `style` elements inside SVG.
 
 | Content | Reason |
 | --- | --- |
@@ -38,10 +38,11 @@ A browser draws an SVG image without scripts, interaction, or external files, an
 | An `a` hyperlink | Links cannot be followed. |
 | A `foreignObject` element | Embedded HTML is outside the supported profile. |
 | An `href`, `xlink:href`, or CSS `url(...)` target other than `#...` or `data:` | External images, fonts, stylesheets, and `<use>` targets never load. |
+| A `<use>` element whose `href` is not a `#...` fragment | Browsers draw nothing for a `data:` target. |
 | An `@import` rule in a `<style>` element | Imported stylesheets never load. |
 | An `xml-stylesheet` processing instruction | External stylesheets never load. |
 
-Malformed XML, a root outside the SVG namespace, and an unusable board size fail with a typed `invalid SVG` error.
+Malformed XML, a namespace declared through an entity reference, a root outside the SVG namespace, and an unusable board size fail with a typed `invalid SVG` error.
 
 ## Rendering
 
@@ -53,7 +54,7 @@ The viewer draws `assets/board.svg` with an SVG `<image>` element placed in [boa
 
 ## Evaluation Oracle
 
-Chromium renders the source SVG directly as the reference. A fixed reference page, which uses neither the viewer runtime nor the scene data, draws a copy of the source at the factory's board size with `dpi / 72` output pixels per board unit. It places the source through a window-sized SVG coordinate window, because Chromium snaps an HTML image box to whole pixels, which stretches a fractional board. The comparison uses the PDF thresholds, scales, tiling, zoom-detail crops, and evidence filenames. `evaluation.json` and `report.html` name the reference renderer.
+Chromium renders the source SVG as the reference, as an isolated image in the same mode the viewer uses. A fixed reference page, which uses neither the viewer runtime nor the scene data, draws a copy of the source at the factory's board size with `dpi / 72` output pixels per board unit. It places the source through a window-sized SVG coordinate window, because Chromium snaps an HTML image box to whole pixels, which stretches a fractional board. The comparison uses the PDF thresholds, scales, tiling, zoom-detail crops, and evidence filenames. `evaluation.json` and `report.html` name the reference renderer.
 
 The factory ships the SVG unchanged, so this oracle checks what the factory adds: board size, placement, scale, tiling, and loading. It does not check how the browser renders SVG features. It also cannot detect a board-size interpretation error, because the reference uses the same size; focused unit tests cover the size rules.
 

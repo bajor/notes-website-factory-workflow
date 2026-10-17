@@ -84,10 +84,10 @@ flowchart LR
   Svg --> Raw
   Raw --> Validate[validateScene] --> Emit[Static JavaScript scene and assets] --> Browser[Viewer]
   Pdf -. evaluation .-> Poppler[Poppler reference]
-  Svg -. evaluation .-> Direct[Chromium direct SVG reference]
+  Svg -. evaluation .-> Direct[Chromium SVG reference<br/>outside the viewer]
 ```
 
-`Factory.Pipeline.loadSource` is the only place that branches on the source format. An SVG source becomes one SVG document node covering the board and the file `assets/board.svg`, which is byte-identical to the source. The viewer draws it as an isolated SVG image in board units. [ADR 0017](/adr/0017-isolated-svg-source-images.md) owns this design, and the [SVG support profile](/svg-support.md) owns accepted content. Everything after `validateScene` is shared by both formats.
+`Factory.Pipeline` is the only module that branches on the source format: `loadSource` reads the source, and `evaluationReference` selects its oracle. An SVG source becomes one SVG document node covering the board and the file `assets/board.svg`, which is byte-identical to the source. The viewer draws it as an isolated SVG image in board units. [ADR 0017](/adr/0017-isolated-svg-source-images.md) owns this design, and the [SVG support profile](/svg-support.md) owns accepted content. Everything after `validateScene` is shared by both formats.
 
 ## PDF Data Flow
 
@@ -192,7 +192,7 @@ For a PDF source, the deployed product receives only the validated scene and its
 
 [ADR 0015](/adr/0015-viewport-sized-svg.md) moves the visual SVG out of the CSS-transformed HTML board. One camera update sets the viewport-sized SVG's coordinate window and the HTML overlay transform. The SVG owns the white source-board rectangle and ordered visuals; the HTML board owns text, links, and activated embeds. `site/styles.css` bounds the SVG to the viewport. [BDR 0022](/bdr/0022-bounded-zoom-rendering.md) defines the browser checks. The PR-only `visual-explanations/0022-bounded-zoom-rendering.svg` shows this control flow.
 
-[ADR 0017](/adr/0017-isolated-svg-source-images.md) adds SVG sources. `Factory.Pipeline` dispatches by format, `Factory.Svg` validates and copies the file, `Factory.Domain` adds the SVG document node, and `site/runtime.js` draws it. `Factory.Evaluation` takes a reference, either Poppler or a Chromium reference page that draws the source SVG directly, and shares tiled capture between that page and the site. [BDR 0024](/bdr/0024-pdf-and-svg-build-contract.md) defines the behavior. The PR-only `visual-explanations/0024-pdf-and-svg-sources.svg` shows this data flow.
+[ADR 0017](/adr/0017-isolated-svg-source-images.md) adds SVG sources. `Factory.Pipeline` dispatches by format, `Factory.Svg` validates and copies the file, `Factory.Domain` adds the SVG document node, and `site/runtime.js` draws it. `Factory.Evaluation` takes a reference, either Poppler or a Chromium reference page that draws the source SVG as an isolated image outside the viewer, and shares tiled capture between that page and the site. [BDR 0024](/bdr/0024-pdf-and-svg-build-contract.md) defines the behavior. The PR-only `visual-explanations/0024-pdf-and-svg-sources.svg` shows this data flow.
 
 [ADR 0016](/adr/0016-board-point-vector-artwork.md) moves image presentation and vector artwork placement from the browser into the generator. `Factory.Vectorize` returns image-space contours, `Factory.Interpreter` places them with the `Factory.Geometry` presentation matrix it also gives raster images, `validateScene` checks the placed paths, and `Factory.Domain` serializes board-point path data; `site/runtime.js` applies raster matrices unchanged. [BDR 0023](/bdr/0023-webkit-close-zoom-visibility.md) owns the resulting WebKit close-zoom contract. The PR-only `visual-explanations/0023-board-point-artwork.svg` shows this data flow.
 

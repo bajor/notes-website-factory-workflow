@@ -92,7 +92,7 @@ The non-interactive browser rendering mode selected by the evaluator at a specif
 
 ## Evaluation Oracle
 
-The development-only reference rendering compared with Chromium output: Poppler's rendering of a source PDF, or Chromium's direct rendering of a source SVG outside the viewer.
+The development-only reference rendering compared with Chromium output: Poppler's rendering of a source PDF, or Chromium's rendering of a source SVG as an isolated image outside the viewer.
 
 ## Highlighter Stroke
 

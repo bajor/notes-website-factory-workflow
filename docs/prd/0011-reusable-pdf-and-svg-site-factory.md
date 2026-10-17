@@ -48,7 +48,7 @@ timestamp: 2026-10-17
 | Attribute | Scenario | Instrument |
 | --- | --- | --- |
 | Reusability | Boards in either format, with different dimensions and content, build with the unchanged workflow. | Both fixture CI runs and consumer runs. |
-| Fidelity | A PDF matches Poppler, and an SVG matches Chromium's direct rendering, at whole-board and native-point scales. | `make evaluate` at 18 and 72 DPI for each fixture. |
+| Fidelity | A PDF matches Poppler, and an SVG matches Chromium's rendering of the source outside the viewer, at whole-board and native-point scales. | `make evaluate` at 18 and 72 DPI for each fixture. |
 | Isolation | Only the selected consumer directory participates in discovery, and an SVG cannot affect the page around it. | Reusable-workflow fixture runs and isolated `<image>` rendering. |
 | Safety | A `source-directory` outside the checkout, or a removable path overlapping a protected root, fails before mutation. | Resolve-step checks and focused path tests. |
 | Compatibility | Existing consumers keep building without changing their caller. | Default `source-directory` and unchanged public names. |

@@ -58,7 +58,7 @@ This BDR replaces [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md). Its
 11. Given an SVG with absolute root `width` and `height`, when it is interpreted, then the board measures those lengths in CSS pixels. Given neither, the board takes the `viewBox` size. Given exactly one, the build fails.
 12. Given a valid SVG, when the site is built, then `assets/board.svg` is byte-identical to the source and the scene holds one `svg-document` node covering the board.
 13. Given an `svg-document` node, when the viewer renders and zooms it, then its `<image>` keeps board units without a transform, and readiness waits for it to load.
-14. Given an SVG source, when evaluation runs, then the reference is Chromium's direct rendering of the source at the board size, and the evidence names that reference.
+14. Given an SVG source, when evaluation runs, then the reference is Chromium's rendering of the source as an isolated image at the board size, outside the viewer, and the evidence names that reference.
 
 ## Test Design
 

@@ -17,7 +17,7 @@ A consumer repository needs:
 - a non-empty `site-title` without control characters;
 - GitHub Pages configured with **GitHub Actions** as its source.
 
-Discovery searches the repository root, or the `source-directory` input, recursively and matches extensions without regard to case. It skips symbolic links and directories named `.git`, `build`, `dist`, `dist.building`, `dist.previous`, `dist-newstyle`, and `node_modules`. Other files may remain in the repository, but a PDF and an SVG together fail as ambiguous. Each support profile defines its supported content and failure behavior. The reusable workflow needs only `contents: read`; the consumer's deployment job owns Pages and OpenID Connect permissions.
+Discovery searches the repository root, or the `source-directory` input, recursively and matches extensions without regard to case. It skips symbolic links and directories named `.git`, `build`, `dist`, `dist.building`, `dist.previous`, `dist-newstyle`, and `node_modules`. Other files may remain in the repository, but a PDF and an SVG together fail as ambiguous. If the repository holds other `.pdf` or `.svg` files, such as images for its README, set `source-directory` to a directory that holds only the board. Each support profile defines its supported content and failure behavior. The reusable workflow needs only `contents: read`; the consumer's deployment job owns Pages and OpenID Connect permissions.
 
 ## How to Use It
 
@@ -83,7 +83,7 @@ On success, the reusable workflow uploads:
 
 The reusable workflow does not deploy either artifact. If evaluation fails, it withholds `github-pages` and uploads available evaluation evidence when possible.
 
-The reference render is Poppler's rendering of a PDF, or Chromium's direct rendering of an SVG. The evaluation report names the reference and includes sampled 4× and 8× detail comparisons for visual inspection alongside the fixed whole-board checks. See the [zoom-detail contract](docs/bdr/0018-zoom-detail-evidence.md) for selection and evidence filenames.
+The reference render is Poppler's rendering of a PDF, or Chromium's rendering of an SVG as an isolated image outside the viewer. The evaluation report names the reference and includes sampled 4× and 8× detail comparisons for visual inspection alongside the fixed whole-board checks. See the [zoom-detail contract](docs/bdr/0018-zoom-detail-evidence.md) for selection and evidence filenames.
 
 The site includes `index.html`, `runtime.js`, `styles.css`, `scene.generated.js`, and `scene-summary.json`. An `assets/` directory is added when a PDF board contains raster assets, and for an SVG source it holds the unchanged `assets/board.svg`. The viewer keeps direct wheel, pinch, drag, and keyboard navigation; its visible control is `Fit`. In PDF boards, YouTube links activate privacy-enhanced embeds, and supported Algo Arcade game links open in a new tab with an accessible gamepad affordance.
 

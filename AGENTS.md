@@ -29,7 +29,7 @@ Every concept has one canonical home and remains reachable from `docs/index.md`.
 - Keep consumer input, the factory checkout, site output, and evaluation evidence in separate roots. Templates remain factory-owned and protected from removable paths.
 - Never allow a removable output, staging, backup, scratch, or report path to overlap a protected root or another independently owned output root.
 - Keep behavior independent of consumer filenames, dimensions, resource names, scene counts, repository names, and complete content URLs.
-- Keep `Factory.Pipeline.loadSource` the only place that branches on the source format.
+- Keep `Factory.Pipeline` the only module that branches on the source format.
 - Do not add Rust, TypeScript, Node, Vite, Sharp, OpenSeadragon, or a backend as a project requirement.
 - Keep Chromium and Poppler in development and CI evaluation only.
 
