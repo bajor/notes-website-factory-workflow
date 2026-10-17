@@ -23,7 +23,7 @@ Implements [PRD 0011](/prd/0011-reusable-pdf-and-svg-site-factory.md), [ADR 0017
 
 ## Verification
 
-- Baseline: `make test` passes 110 tests, and `make evaluate` passes with zero difference at 18 and 72 DPI. After the change, all 128 tests pass, and `make test` inspects and builds both fixtures.
+- Baseline: `make test` passes 110 tests, and `make evaluate` passes with zero difference at 18 and 72 DPI. After the change, all 130 tests pass, and `make test` inspects and builds both fixtures.
 - PDF fixture: `make evaluate` still passes with zero difference at both scales, and the report names Poppler.
 - SVG fixture: `make evaluate` passes. At 18 and 72 DPI, mean error is `0.0017` and `0.0005`, pixels within tolerance are `0.991` and `0.997`, and ink ratios are `1.005` and `1.002`. All six zoom-detail crops have zero difference. The remaining differences are glyph antialiasing in the fixture's text and the partial last pixel row, where the viewer background shows through a third of a pixel beyond the board edge.
 - A first reference drew the source with an HTML `<img>` and gave an 18 DPI mean error of `0.0084`. Chromium snapped that box to 427 pixels for the 426.667-pixel board, which moved the reference's bottom border 0.33 pixels; the generated border matched the geometry. The reference now uses an SVG coordinate window.

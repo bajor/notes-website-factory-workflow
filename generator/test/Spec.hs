@@ -14,7 +14,7 @@ import Factory.Interpreter (ColorSpaceResource (SupportedColorSpace, Unsupported
 import Factory.Pipeline (outputCompanionPaths, sourceAt, validateOutputPath)
 import Factory.Pdf (classifyUrl, rejectDecode, rgbaImage)
 import Factory.Site (renderIndexTemplate, validateScene)
-import Factory.Svg (SvgBoard (SvgBoard), interpretSvg, svgScene)
+import Factory.Svg (SvgBoard (SvgBoard), interpretSvg)
 import Factory.Vectorize (ArtworkPartition (..), ImageDisposition (..), classifyImage, opaqueHighlighter, partitionArtwork, traceImage, traceReconstructedImage, traceSmoothImage)
 import Pdf.Content (Op (..), Operator)
 import Pdf.Core (Object (Array, Name, Number))
@@ -363,7 +363,7 @@ svgTests =
     "SVG sources"
     [ testCase "absolute root lengths convert to CSS pixels" $
         interpretSvg (svgDocument "width=\"72pt\" height=\"1in\"" "") @?= Right (SvgBoard 96 96)
-    , testCase "percentage and missing root lengths use the viewBox size" $
+    , testCase "non-absolute root lengths use the viewBox size" $
         interpretSvg (svgDocument "width=\"100%\" viewBox=\"0 0 640,480\"" "") @?= Right (SvgBoard 640 480)
     , testCase "a single absolute root length is rejected" $
         interpretSvg (svgDocument "width=\"640\" viewBox=\"0 0 640 480\"" "")
@@ -393,11 +393,14 @@ svgTests =
         interpretSvg (sizedSvg "<style>@import 'theme.css';</style>") @?= Left (UnsupportedSvg "SVG stylesheets must not import other stylesheets")
     , testCase "external stylesheet instructions are rejected" $
         interpretSvg ("<?xml-stylesheet href=\"theme.css\"?>" <> sizedSvg "") @?= Left (UnsupportedSvg "external SVG stylesheets are not supported")
-    , testCase "fragment and data references are accepted" $
-        interpretSvg (sizedSvg "<defs><linearGradient id=\"g\"/><rect id=\"r\" width=\"1\" height=\"1\"/></defs><use xlink:href=\"#r\" fill=\"url(#g)\"/><image width=\"1\" height=\"1\" href=\"DATA:image/png;base64,AAAA\"/>")
+    , testCase "same-document fragments are accepted" $
+        interpretSvg (sizedSvg "<defs><linearGradient id=\"g\"/><rect id=\"r\" width=\"1\" height=\"1\"/></defs><use xlink:href=\"#r\" fill=\"url(#g)\"/>")
           @?= Right (SvgBoard 10 10)
-    , testCase "an SVG board is a valid scene of one document node" $
-        fmap sceneNodes (validateScene (svgScene (SvgBoard 640 480))) @?= Right [SvgDocumentNode "assets/board.svg" (Rect 0 0 640 480)]
+    , testCase "data URIs are accepted regardless of case" $
+        interpretSvg (sizedSvg "<image width=\"1\" height=\"1\" href=\"DATA:image/png;base64,AAAA\"/>") @?= Right (SvgBoard 10 10)
+    , testCase "an SVG document without area is rejected" $
+        validateScene (sceneWith [] [SvgDocumentNode "assets/board.svg" (Rect 0 0 0 480)])
+          @?= Left (InvalidScene "scene contains an invalid size, color, or opacity")
     , testCase "SVG documents serialize their file and board bounds" $
         toJSON (SvgDocumentNode "assets/board.svg" (Rect 0 0 640 480))
           @?= object
@@ -537,9 +540,10 @@ pipelineTests =
     , testCase "a sibling output directory is accepted" $
         validateOutputPath "/workspace/repository" "/workspace/dist"
           @?= Right ()
-    , testCase "sources are classified by case-insensitive extension" $
-        map sourceAt ["notes/Board.SVG", "notes/board.pdf", "notes/board.png"]
-          @?= [Just (SvgSource "notes/Board.SVG"), Just (PdfSource "notes/board.pdf"), Nothing]
+    , testCase "SVG extensions are recognized regardless of case" $
+        sourceAt "notes/Board.SVG" @?= Just (SvgSource "notes/Board.SVG")
+    , testCase "other extensions are not sources" $
+        sourceAt "notes/board.png" @?= Nothing
     , testCase "trailing separators do not put staging inside the output" $
         outputCompanionPaths "/workspace/repository/dist/"
           @?= ("/workspace/repository/dist", "/workspace/repository/dist.building", "/workspace/repository/dist.previous")
