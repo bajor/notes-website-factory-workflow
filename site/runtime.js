@@ -98,7 +98,7 @@ function addImage(node, assets) {
   image.setAttribute('opacity', node.opacity);
   image.setAttribute('preserveAspectRatio', 'none');
   image.setAttribute('transform', cssMatrix(node.matrix));
-  const loaded = loadImage(image, asset.file);
+  const loaded = loadImage(image, asset.file, asset.file);
   appendVisual(image, node.clips);
   return loaded;
 }
@@ -112,17 +112,18 @@ function addSvgDocument(node) {
   image.setAttribute('y', node.bounds.y);
   image.setAttribute('width', node.bounds.width);
   image.setAttribute('height', node.bounds.height);
-  const loaded = loadImage(image, node.href);
+  // The href holds the whole source, so the error names the board instead.
+  const loaded = loadImage(image, node.href, 'the SVG board');
   appendVisual(image, []);
   return loaded;
 }
 
-function loadImage(image, file) {
+function loadImage(image, href, description) {
   const loaded = new Promise((resolve, reject) => {
     image.addEventListener('load', resolve, { once: true });
-    image.addEventListener('error', () => reject(new Error(`Could not load ${file}`)), { once: true });
+    image.addEventListener('error', () => reject(new Error(`Could not load ${description}`)), { once: true });
   });
-  image.setAttribute('href', file);
+  image.setAttribute('href', href);
   return loaded;
 }
 

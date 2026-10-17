@@ -22,7 +22,7 @@ import Factory.Domain
 import Factory.Evaluation (EvaluationResult (..), Reference (..), runVisualEvaluation)
 import Factory.Pdf (ParsedPdf (..), PdfSummary (..), parsePdf)
 import Factory.Site (validateScene, writeSite)
-import Factory.Svg (SvgBoard (..), ValidatedSvg (..), readSvg, svgScene)
+import Factory.Svg (SvgBoard (..), readSvg, svgScene, validatedBoard)
 import System.Directory
   ( canonicalizePath
   , createDirectoryIfMissing
@@ -84,7 +84,7 @@ loadSource source assetDirectory = case source of
 evaluationReference :: Source -> IO (Either BuildError Reference)
 evaluationReference source = case source of
   PdfSource pdf -> pure (Right (PopplerReference pdf))
-  SvgSource svg -> fmap (\(ValidatedSvg (SvgBoard width height) _) -> BrowserReference svg width height) <$> readSvg svg
+  SvgSource svg -> fmap (\validated -> let SvgBoard width height = validatedBoard validated in BrowserReference svg width height) <$> readSvg svg
 
 inspectRepository :: FilePath -> FilePath -> IO (Either BuildError Text)
 inspectRepository sourceRoot workDirectory = do

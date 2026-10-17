@@ -63,6 +63,7 @@ validate-dist:
 	! grep -Fq '"topics"' "$(DIST)/scene-summary.json"
 	! grep -qi 'topic' "$(DIST)/runtime.js"
 	test -z "$$(find "$(DIST)" -type f -iname '*.pdf' -print -quit)"
+	test -z "$$(find "$(DIST)" -type f -iname '*.svg' -print -quit)"
 	! grep -R -E '(src|href)="/' "$(DIST)"
 	! grep -qi 'canvas' "$(DIST)/runtime.js"
 

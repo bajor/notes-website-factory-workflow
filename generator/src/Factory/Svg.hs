@@ -9,10 +9,12 @@
 -- module therefore rejects the forms of that content it can recognize.
 module Factory.Svg
   ( SvgBoard (..)
-  , ValidatedSvg (..)
+  , ValidatedSvg
   , interpretSvg
   , readSvg
   , svgScene
+  , validateSvg
+  , validatedBoard
   ) where
 
 import Control.Exception (IOException, displayException, try)
@@ -39,10 +41,11 @@ data SvgBoard = SvgBoard
   deriving stock (Eq, Show)
 
 -- | A source that passed validation, with the exact bytes the site embeds.
-data ValidatedSvg = ValidatedSvg
-  { validatedBoard :: SvgBoard
-  , validatedBytes :: ByteString.ByteString
-  }
+-- Only 'validateSvg' constructs it, so unchecked bytes cannot reach 'svgScene'.
+data ValidatedSvg = ValidatedSvg SvgBoard ByteString.ByteString
+
+validatedBoard :: ValidatedSvg -> SvgBoard
+validatedBoard (ValidatedSvg board _) = board
 
 -- | A root size attribute; percentages give no size, as for an image in a browser.
 data RootLength = AbsoluteLength Double | NoLength
@@ -57,7 +60,10 @@ readSvg path = do
   source <- try (ByteString.readFile path)
   pure $ case source of
     Left exception -> Left (IoError (Text.pack (displayException (exception :: IOException))))
-    Right bytes -> (`ValidatedSvg` bytes) <$> interpretSvg (LazyByteString.fromStrict bytes)
+    Right bytes -> validateSvg bytes
+
+validateSvg :: ByteString.ByteString -> Either BuildError ValidatedSvg
+validateSvg bytes = (`ValidatedSvg` bytes) <$> interpretSvg (LazyByteString.fromStrict bytes)
 
 -- | Embed the exact source bytes as a data URI. No standalone SVG file is
 -- published, so a browser can never open the source as a document that runs
@@ -71,9 +77,10 @@ interpretSvg bytes = do
   document <- first (InvalidSvg . Text.pack . displayException) (Xml.parseLBS Xml.def bytes)
   let root = Xml.documentRoot document
       elements = descendants root
-  -- xml-conduit keeps an entity reference in a namespace declaration as literal
-  -- text, while browsers expand it, so such names would be misread.
-  when (any usesEntityNamespace elements) (Left (InvalidSvg "namespace declarations must not use entity references"))
+  -- xml-conduit keeps entity and character references in a namespace
+  -- declaration as literal text, while browsers expand them, so such names
+  -- would be misread.
+  when (any usesEntityNamespace elements) (Left (InvalidSvg "namespace declarations must not contain entity or character references"))
   unless (Xml.elementName root == svgName "svg") (Left (InvalidSvg "the root element must be svg in the SVG namespace"))
   board <- rootBoard root
   traverse_ checkInstruction (documentInstructions document)
@@ -171,20 +178,30 @@ checkAttribute elementName (name, value)
       unsupported "SVG event handler attributes are not supported"
   | isHref && elementName `elem` ["image", "feImage"] = checkReference value
   | isHref = checkElementReference elementName value
-  | otherwise = traverse_ checkReference (cssUrlTargets value)
+  | otherwise = traverse_ checkCssReference (cssUrlTargets value)
   where
     isHref = Xml.nameLocalName name == "href" && Xml.nameNamespace name `elem` [Nothing, Just xlinkNamespace]
 
 checkStylesheet :: Text -> Either BuildError ()
 checkStylesheet css = do
   when ("@import" `Text.isInfixOf` Text.map toLower css) (unsupported "SVG stylesheets must not import other stylesheets")
-  traverse_ checkReference (cssUrlTargets css)
+  traverse_ checkCssReference (cssUrlTargets css)
 
 -- | Only same-document fragments and data URIs load inside an isolated SVG image.
 checkReference :: Text -> Either BuildError ()
 checkReference reference
   | "#" `Text.isPrefixOf` target || "data:" `Text.isPrefixOf` Text.map toLower target = Right ()
   | otherwise = unsupported ("SVG references an external resource: " <> target)
+  where
+    target = Text.strip reference
+
+-- | Chromium resolves a fragment inside a CSS data URI, but WebKit draws the
+-- fallback instead, so the evaluation could not represent what Safari shows.
+checkCssReference :: Text -> Either BuildError ()
+checkCssReference reference = do
+  checkReference reference
+  when ("data:" `Text.isPrefixOf` Text.map toLower target && "#" `Text.isInfixOf` target) $
+    unsupported "SVG CSS references must not point into a data URI"
   where
     target = Text.strip reference
 

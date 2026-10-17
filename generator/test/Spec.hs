@@ -14,7 +14,7 @@ import Factory.Interpreter (ColorSpaceResource (SupportedColorSpace, Unsupported
 import Factory.Pipeline (outputCompanionPaths, sourceAt, validateOutputPath)
 import Factory.Pdf (classifyUrl, rejectDecode, rgbaImage)
 import Factory.Site (renderIndexTemplate, validateScene)
-import Factory.Svg (SvgBoard (SvgBoard), ValidatedSvg (ValidatedSvg), interpretSvg, svgScene)
+import Factory.Svg (SvgBoard (SvgBoard), interpretSvg, svgScene, validateSvg)
 import Factory.Vectorize (ArtworkPartition (..), ImageDisposition (..), classifyImage, opaqueHighlighter, partitionArtwork, traceImage, traceReconstructedImage, traceSmoothImage)
 import Pdf.Content (Op (..), Operator)
 import Pdf.Core (Object (Array, Name, Number))
@@ -402,7 +402,10 @@ svgTests =
           @?= Left (UnsupportedSvg "SVG textPath elements must reference an element in the same file")
     , testCase "entity references in namespace declarations are rejected" $
         interpretSvg "<!DOCTYPE svg [<!ENTITY x \"1999/xlink\">]><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:l=\"http://www.w3.org/&x;\" width=\"10\" height=\"10\"><image l:href=\"photo.png\"/></svg>"
-          @?= Left (InvalidSvg "namespace declarations must not use entity references")
+          @?= Left (InvalidSvg "namespace declarations must not contain entity or character references")
+    , testCase "CSS references into data URIs are rejected" $
+        interpretSvg (sizedSvg "<rect width=\"1\" height=\"1\" fill=\"url(data:image/svg+xml;base64,AAAA#p)\"/>")
+          @?= Left (UnsupportedSvg "SVG CSS references must not point into a data URI")
     , testCase "external stylesheet instructions are rejected" $
         interpretSvg ("<?xml-stylesheet href=\"theme.css\"?>" <> sizedSvg "") @?= Left (UnsupportedSvg "external SVG stylesheets are not supported")
     , testCase "same-document fragments are accepted" $
@@ -414,7 +417,8 @@ svgTests =
         validateScene (sceneWith [] [SvgDocumentNode "data:image/svg+xml;base64,PHN2Zy8+" (Rect 0 0 0 480)])
           @?= Left (InvalidScene "scene contains an invalid size, color, or opacity")
     , testCase "SVG documents embed the exact source bytes as a data URI" $
-        sceneNodes (svgScene (ValidatedSvg (SvgBoard 10 10) "<svg/>")) @?= [SvgDocumentNode "data:image/svg+xml;base64,PHN2Zy8+" (Rect 0 0 10 10)]
+        fmap (sceneNodes . svgScene) (validateSvg "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"/>")
+          @?= Right [SvgDocumentNode "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIvPg==" (Rect 0 0 10 10)]
     , testCase "SVG documents serialize their href and board bounds" $
         toJSON (SvgDocumentNode "data:image/svg+xml;base64,PHN2Zy8+" (Rect 0 0 640 480))
           @?= object
