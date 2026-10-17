@@ -9,7 +9,7 @@ timestamp: 2026-10-17
 
 ## Evidence and Scope
 
-On 2026-10-17 the owner reported moving from Apple Freeform PDF exports to a note application that exports SVG. They asked the factory to keep PDF behavior, to use an SVG as it is, and to describe both formats. No production SVG export is available yet. The known consumers `notes-algos-for-slow-learners`, `notes-gcp-storage-and-data-processing-engines`, and `notes-website-template` contain no `.svg` file, so widening discovery does not change their builds.
+On 2026-10-17 the owner reported moving from Apple Freeform PDF exports to a note application that exports SVG. They asked the factory to keep PDF behavior, to use an SVG as it is, and to describe both formats. The application is Ahmni: Infinite Canvas for iPad, whose App Store version history adds "Export a canvas as an SVG" in version 1.39.0. Since version 1.32.0 its canvases can hold links to other canvases, bookmarks, or URLs, so the first export will show whether links reach the SVG as hyperlinks, which the [SVG support profile](/svg-support.md) rejects. No production SVG export is available yet. The known consumers `notes-algos-for-slow-learners`, `notes-gcp-storage-and-data-processing-engines`, and `notes-website-template` contain no `.svg` file, so widening discovery does not change their builds.
 
 Implements [PRD 0011](/prd/0011-reusable-pdf-and-svg-site-factory.md), [ADR 0017](/adr/0017-isolated-svg-source-images.md), and [BDR 0024](/bdr/0024-pdf-and-svg-build-contract.md).
 
