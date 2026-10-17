@@ -49,7 +49,7 @@ runCommand = do
       withSiteTitle rawTitle (buildRepository sourceRoot templateDirectory outputDirectory)
     ["evaluate", sourceRoot, templateDirectory, outputDirectory, reportDirectory, rawTitle] ->
       withSiteTitle rawTitle (evaluateRepository sourceRoot templateDirectory outputDirectory reportDirectory)
-    _ -> pure (Left (IoError "usage: freeform-site inspect SOURCE WORK | build SOURCE TEMPLATES DIST TITLE | evaluate SOURCE TEMPLATES DIST REPORT TITLE"))
+    _ -> pure (Left (IoError "usage: notes-site inspect SOURCE WORK | build SOURCE TEMPLATES DIST TITLE | evaluate SOURCE TEMPLATES DIST REPORT TITLE"))
   case result of
     Left buildError -> Text.putStrLn ("ERROR: " <> renderError buildError) >> exitFailure
     Right message -> Text.putStrLn message

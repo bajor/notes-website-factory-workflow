@@ -1,5 +1,5 @@
 cabal-version:      3.0
-name:               freeform-site
+name:               notes-site
 version:            0.1.0.0
 build-type:         Simple
 
@@ -43,16 +43,16 @@ library
     , unordered-containers
     , vector
 
-executable freeform-site
+executable notes-site
   main-is:          Main.hs
   hs-source-dirs:   app
   default-language: GHC2021
   ghc-options:      -Wall -Wcompat -Werror
   build-depends:
       base >=4.18 && <4.19
-    , freeform-site
+    , notes-site
 
-test-suite freeform-site-test
+test-suite notes-site-test
   type:             exitcode-stdio-1.0
   main-is:          Spec.hs
   hs-source-dirs:   test
@@ -63,7 +63,7 @@ test-suite freeform-site-test
     , base >=4.18 && <4.19
     , bytestring
     , containers
-    , freeform-site
+    , notes-site
     , JuicyPixels
     , pdf-toolbox-content ==0.1.2
     , pdf-toolbox-core ==0.1.3

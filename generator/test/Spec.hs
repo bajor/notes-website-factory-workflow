@@ -32,7 +32,7 @@ main = defaultMain tests
 tests :: TestTree
 tests =
   testGroup
-    "freeform factory"
+    "notes site factory"
     [ geometryTests
     , interpreterTests
     , imageTests

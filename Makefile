@@ -14,7 +14,7 @@ RUNTIME_TEST_URL = file://$(abspath $(RUNTIME_TEST))/index.html
 export SITE_TITLE
 
 inspect:
-	$(CABAL) run freeform-site -- inspect "$(SOURCE)" "$(WORK)"
+	$(CABAL) run notes-site -- inspect "$(SOURCE)" "$(WORK)"
 
 test:
 	$(CABAL) build all
@@ -23,11 +23,11 @@ test:
 	$(MAKE) build
 
 build:
-	$(CABAL) run freeform-site -- build "$(SOURCE)" "$(TEMPLATES)" "$(DIST)" "$${SITE_TITLE}"
+	$(CABAL) run notes-site -- build "$(SOURCE)" "$(TEMPLATES)" "$(DIST)" "$${SITE_TITLE}"
 	$(MAKE) validate-dist
 
 evaluate:
-	$(CABAL) run freeform-site -- evaluate "$(SOURCE)" "$(TEMPLATES)" "$(DIST)" "$(REPORT)" "$${SITE_TITLE}"
+	$(CABAL) run notes-site -- evaluate "$(SOURCE)" "$(TEMPLATES)" "$(DIST)" "$(REPORT)" "$${SITE_TITLE}"
 	$(MAKE) test-runtime
 	$(MAKE) validate-dist
 
