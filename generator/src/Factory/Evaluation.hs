@@ -72,7 +72,7 @@ data EvaluationResult = EvaluationResult
 data Reference
   = -- | Poppler renders the source PDF.
     PopplerReference FilePath
-  | -- | Chromium draws the source SVG directly at the given board width and height.
+  | -- | Chromium draws the source SVG as an isolated image, outside the viewer, at the given board width and height.
     BrowserReference FilePath (Coordinate BoardSpace) (Coordinate BoardSpace)
 
 data ScaleEvaluation = ScaleEvaluation Int EvaluationResult
@@ -130,10 +130,11 @@ runVisualEvaluation reference siteDirectory reportDirectory = do
   createDirectoryIfMissing True reportDirectory
   absoluteSite <- makeAbsolute siteDirectory
   absoluteReport <- makeAbsolute reportDirectory
-  prepared <- prepareReference reference absoluteReport
-  case prepared of
-    Left message -> pure (Left (EvaluationError message))
-    Right () -> evaluateAll absoluteSite absoluteReport `finally` removeReferencePage absoluteReport
+  -- Preparation can fail after copying the source, so cleanup covers it too.
+  ( prepareReference reference absoluteReport
+      >>= either (pure . Left . EvaluationError) (const (evaluateAll absoluteSite absoluteReport))
+    )
+    `finally` removeReferencePage absoluteReport
   where
     evaluateAll absoluteSite absoluteReport = do
       evaluated <- evaluateScales absoluteSite absoluteReport referenceDpis

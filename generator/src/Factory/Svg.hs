@@ -72,10 +72,14 @@ interpretSvg :: LazyByteString.ByteString -> Either BuildError SvgBoard
 interpretSvg bytes = do
   document <- first (InvalidSvg . Text.pack . displayException) (Xml.parseLBS Xml.def bytes)
   let root = Xml.documentRoot document
+      elements = descendants root
+  -- xml-conduit keeps an entity reference in a namespace declaration as literal
+  -- text, while browsers expand it, so such names would be misread.
+  when (any usesEntityNamespace elements) (Left (InvalidSvg "namespace declarations must not use entity references"))
   unless (Xml.elementName root == svgName "svg") (Left (InvalidSvg "the root element must be svg in the SVG namespace"))
   board <- rootBoard root
   traverse_ checkInstruction (documentInstructions document)
-  checkElement root
+  traverse_ checkElement elements
   pure board
 
 readSource :: FilePath -> IO (Either BuildError LazyByteString.ByteString)
@@ -123,9 +127,13 @@ viewBoxSize root = case Map.lookup (Xml.Name "viewBox" Nothing Nothing) (Xml.ele
     Right [(_, ""), (_, ""), (width, ""), (height, "")] -> Right (width, height)
     _ -> Left (InvalidSvg ("viewBox must contain four numbers: " <> raw))
 
--- | Read a leading SVG number and return the remaining text.
+-- | Read a leading SVG number, which may omit the digit before its point, and return the remaining text.
 svgNumber :: Text -> Either String (Double, Text)
-svgNumber text = Text.signed Text.double (if "." `Text.isPrefixOf` text then "0" <> text else text)
+svgNumber text = Text.signed Text.double $ case Text.uncons text of
+  Just (sign, rest) | sign `elem` ['-', '+'] -> Text.cons sign (withLeadingDigit rest)
+  _ -> withLeadingDigit text
+  where
+    withLeadingDigit value = if "." `Text.isPrefixOf` value then "0" <> value else value
 
 documentInstructions :: Xml.Document -> [Xml.Instruction]
 documentInstructions document =
@@ -137,30 +145,37 @@ checkInstruction :: Xml.Instruction -> Either BuildError ()
 checkInstruction instruction =
   when (Xml.instructionTarget instruction == "xml-stylesheet") (unsupported "external SVG stylesheets are not supported")
 
+descendants :: Xml.Element -> [Xml.Element]
+descendants element = element : concat [descendants child | Xml.NodeElement child <- Xml.elementNodes element]
+
+usesEntityNamespace :: Xml.Element -> Bool
+usesEntityNamespace element =
+  any (maybe False ("&" `Text.isPrefixOf`) . Xml.nameNamespace) (Xml.elementName element : Map.keys (Xml.elementAttributes element))
+
+-- | Element names are matched in every namespace, because browsers also run
+-- XHTML scripts and apply XHTML styles inside SVG.
 checkElement :: Xml.Element -> Either BuildError ()
 checkElement element = do
-  traverse_ unsupported (lookup (Xml.elementName element) unsupportedElements)
-  traverse_ checkAttribute (Map.toList (Xml.elementAttributes element))
-  when (Xml.elementName element == svgName "style") (traverse_ checkStylesheet [css | Xml.NodeContent css <- children])
-  traverse_ checkNode children
+  traverse_ unsupported (lookup localName unsupportedElements)
+  traverse_ (checkAttribute localName) (Map.toList (Xml.elementAttributes element))
+  when (localName == "style") (traverse_ checkStylesheet [css | Xml.NodeContent css <- children])
+  traverse_ checkInstruction [instruction | Xml.NodeInstruction instruction <- children]
   where
+    localName = Xml.nameLocalName (Xml.elementName element)
     children = Xml.elementNodes element
-    checkNode node = case node of
-      Xml.NodeElement child -> checkElement child
-      Xml.NodeInstruction instruction -> checkInstruction instruction
-      _ -> Right ()
 
-unsupportedElements :: [(Xml.Name, Text)]
+unsupportedElements :: [(Text, Text)]
 unsupportedElements =
-  [ (svgName "script", "SVG scripts are not supported")
-  , (svgName "a", "SVG hyperlinks are not supported")
-  , (svgName "foreignObject", "SVG foreignObject content is not supported")
+  [ ("script", "SVG scripts are not supported")
+  , ("a", "SVG hyperlinks are not supported")
+  , ("foreignObject", "SVG foreignObject content is not supported")
   ]
 
-checkAttribute :: (Xml.Name, Text) -> Either BuildError ()
-checkAttribute (name, value)
+checkAttribute :: Text -> (Xml.Name, Text) -> Either BuildError ()
+checkAttribute elementName (name, value)
   | Xml.nameNamespace name == Nothing && "on" `Text.isPrefixOf` Text.map toLower (Xml.nameLocalName name) =
       unsupported "SVG event handler attributes are not supported"
+  | isHref && elementName == "use" = checkUseReference value
   | isHref = checkReference value
   | otherwise = traverse_ checkReference (cssUrlTargets value)
   where
@@ -178,6 +193,12 @@ checkReference reference
   | otherwise = unsupported ("SVG references an external resource: " <> target)
   where
     target = Text.strip reference
+
+-- | Browsers draw nothing for a @use@ element that targets a data URI.
+checkUseReference :: Text -> Either BuildError ()
+checkUseReference reference
+  | "#" `Text.isPrefixOf` Text.strip reference = Right ()
+  | otherwise = unsupported "SVG use elements must reference an element in the same file"
 
 -- | The targets of every CSS @url(...)@ in a value, without quotes.
 --

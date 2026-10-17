@@ -365,6 +365,8 @@ svgTests =
         interpretSvg (svgDocument "width=\"72pt\" height=\"1in\"" "") @?= Right (SvgBoard 96 96)
     , testCase "non-absolute root lengths use the viewBox size" $
         interpretSvg (svgDocument "width=\"100%\" viewBox=\"0 0 640,480\"" "") @?= Right (SvgBoard 640 480)
+    , testCase "signed numbers may omit the digit before the point" $
+        interpretSvg (svgDocument "viewBox=\"-.5 +.5 64 48\"" "") @?= Right (SvgBoard 64 48)
     , testCase "a single absolute root length is rejected" $
         interpretSvg (svgDocument "width=\"640\" viewBox=\"0 0 640 480\"" "")
           @?= Left (InvalidSvg "width and height must both be absolute lengths, or neither")
@@ -376,6 +378,8 @@ svgTests =
           result -> assertFailure ("unexpected SVG result: " <> show result)
     , testCase "scripts are rejected" $
         interpretSvg (sizedSvg "<script>run()</script>") @?= Left (UnsupportedSvg "SVG scripts are not supported")
+    , testCase "scripts in other namespaces are rejected" $
+        interpretSvg (sizedSvg "<h:script xmlns:h=\"http://www.w3.org/1999/xhtml\">run()</h:script>") @?= Left (UnsupportedSvg "SVG scripts are not supported")
     , testCase "event handler attributes are rejected" $
         interpretSvg (sizedSvg "<rect width=\"1\" height=\"1\" onclick=\"run()\"/>") @?= Left (UnsupportedSvg "SVG event handler attributes are not supported")
     , testCase "hyperlinks are rejected" $
@@ -391,6 +395,13 @@ svgTests =
           @?= Left (UnsupportedSvg "SVG references an external resource: https://example.com/a.woff2")
     , testCase "stylesheet imports are rejected" $
         interpretSvg (sizedSvg "<style>@import 'theme.css';</style>") @?= Left (UnsupportedSvg "SVG stylesheets must not import other stylesheets")
+    , testCase "style elements in other namespaces are checked" $
+        interpretSvg (sizedSvg "<style xmlns=\"http://www.w3.org/1999/xhtml\">@import 'theme.css';</style>") @?= Left (UnsupportedSvg "SVG stylesheets must not import other stylesheets")
+    , testCase "use elements must reference an element in the same file" $
+        interpretSvg (sizedSvg "<use href=\"data:image/svg+xml,%3Csvg/%3E\"/>") @?= Left (UnsupportedSvg "SVG use elements must reference an element in the same file")
+    , testCase "entity references in namespace declarations are rejected" $
+        interpretSvg "<!DOCTYPE svg [<!ENTITY x \"http://www.w3.org/1999/xlink\">]><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"&x;\" width=\"10\" height=\"10\"><image xlink:href=\"photo.png\"/></svg>"
+          @?= Left (InvalidSvg "namespace declarations must not use entity references")
     , testCase "external stylesheet instructions are rejected" $
         interpretSvg ("<?xml-stylesheet href=\"theme.css\"?>" <> sizedSvg "") @?= Left (UnsupportedSvg "external SVG stylesheets are not supported")
     , testCase "same-document fragments are accepted" $
