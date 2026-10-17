@@ -74,7 +74,7 @@ This BDR replaces [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md). Its
 | 8 | Focused path-relation tests and symlink and overlap CLI checks | Input, site, and evidence ownership cannot be erased or mixed. |
 | 9, 10 | Local execution of the resolve step for default, nested, `..`, symlink-escape, missing, file, and absolute inputs | Only directories inside the checkout are searched. |
 | 11 | `interpretSvg` board-size unit tests | Each size rule holds. |
-| 12 | Embedding, validation, and serialization unit tests, and decoding the built fixture's `href` | The source ships unchanged and only inside the scene. |
+| 12 | Embedding, validation, and serialization unit tests, decoding the built fixture's `href`, and the `validate-dist` check for SVG files | The source ships unchanged and only inside the scene. |
 | 13 | `make test-runtime` DOM check and close-zoom board-unit regression | The image stays in board units. |
 | 14 | `make evaluate` on the SVG fixture and `evaluation.json` inspection | The SVG reference is used and recorded. |
 
