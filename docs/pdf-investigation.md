@@ -1,10 +1,12 @@
 ---
 type: Reference
-title: Apple Freeform PDF support profile
-description: Historical evidence, supported parsing, classification policy, and explicit limitations.
-timestamp: 2026-09-27
+title: PDF support profile
+description: Apple Freeform evidence, supported PDF parsing, classification policy, and explicit limitations.
+timestamp: 2026-10-17
 ---
-# Apple Freeform PDF Support Profile
+# PDF Support Profile
+
+This profile covers PDF source documents. The supported subset was observed in Apple Freeform exports, so a PDF from another application is supported only where it stays inside this subset. SVG sources follow the [SVG support profile](/svg-support.md).
 
 ## Historical Production Evidence
 
@@ -79,9 +81,9 @@ The parser currently supports the subset required by the observed Freeform expor
 
 ## Factory Fixture
 
-`generator/test/fixtures/minimal/minimal-freeform.pdf` is a synthetic one-page compatibility fixture. It exercises page discovery, native path interpretation, vector-only output, template rendering, browser readiness, and evaluation without retaining production notes. Focused tests cover raster resources, soft-mask boundaries, vector tracing, structural game-link classification, graphics state, browser stroke attributes, affine scene validation and runtime placement, and mixed source order.
+`generator/test/fixtures/pdf/minimal.pdf` is a synthetic one-page compatibility fixture. It exercises page discovery, native path interpretation, vector-only output, template rendering, browser readiness, and evaluation without retaining production notes. Focused tests cover raster resources, soft-mask boundaries, vector tracing, structural game-link classification, graphics state, browser stroke attributes, affine scene validation and runtime placement, and mixed source order.
 
-The fixture does not broaden the support claim beyond Apple Freeform exports. New parser behavior still requires evidence from a real consumer source.
+The fixture does not broaden the support claim beyond the observed Apple Freeform subset. New parser behavior still requires evidence from a real consumer source.
 
 ## Explicit Limitations
 

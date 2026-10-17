@@ -1,10 +1,26 @@
 ---
 type: Context
 title: Project glossary
-description: Definitions for PDF rendering, workflow reuse, artifacts, and evaluation.
-timestamp: 2026-09-27
+description: Definitions for PDF and SVG sources, rendering, workflow reuse, artifacts, and evaluation.
+timestamp: 2026-10-17
 ---
 # Glossary
+
+## Source Document
+
+The one consumer file a site is built from: a one-page PDF, such as an Apple Freeform export, or a self-contained SVG, such as an Ahmni canvas export. Discovery recognizes it by its `.pdf` or `.svg` extension, ignoring case.
+
+## Source Directory
+
+The consumer-relative directory searched for the source document. The optional `source-directory` workflow input selects it; it defaults to the repository root and must resolve inside the consumer checkout.
+
+## Self-Contained SVG
+
+An SVG whose references all point inside the file, as `#fragment` targets or `data:` URIs, and which has no scripts, event handlers, hyperlinks, or `foreignObject`. Only such an SVG renders completely as an isolated image.
+
+## SVG Document Node
+
+A scene node that draws a self-contained SVG, embedded unchanged as a `data:` URI, with an SVG `<image>` element placed over a board rectangle in board units. An SVG source produces one node covering the board.
 
 ## Image XObject
 
@@ -64,7 +80,7 @@ A six-number matrix that can translate, scale, rotate, or shear embedded artwork
 
 ## Board Unit
 
-One PDF point of the source board. It is the user unit of the scene SVG, its containers, and its vector paths; only raster images apply their own affine image transform.
+One PDF point of a PDF board, or one CSS pixel of an SVG board, which is one SVG user unit of its untransformed root. It is the user unit of the scene SVG, its containers, its vector paths, and SVG document nodes; only raster images apply their own affine image transform.
 
 ## Game Link
 
@@ -72,11 +88,11 @@ A typed scene link whose structurally parsed URI matches the documented HTTPS Al
 
 ## Evaluation Mode
 
-The non-interactive browser rendering mode selected by the evaluator at a specific dots-per-inch scale. It hides controls and synthesized game badges so screenshots contain only PDF-derived scene content.
+The non-interactive browser rendering mode selected by the evaluator at a specific dots-per-inch scale. It hides controls and synthesized game badges so screenshots contain only source-derived scene content.
 
 ## Evaluation Oracle
 
-Poppler's development-only rendering of the source PDF, used as an independent visual reference for Chromium output.
+The development-only reference rendering compared with Chromium output: Poppler's rendering of a source PDF, or Chromium's rendering of a source SVG as an isolated image outside the viewer.
 
 ## Highlighter Stroke
 
@@ -88,7 +104,7 @@ The `notes-website-factory` repository that owns generator source, shared viewer
 
 ## Consumer Repository
 
-A repository that owns exactly one production PDF, its site title, caller trigger, and Pages deployment policy.
+A repository that owns exactly one production source document, its site title, caller trigger, and Pages deployment policy.
 
 ## Reusable Workflow
 
@@ -104,7 +120,7 @@ The artifact named `github-pages` that contains the validated static site in the
 
 ## Evaluation Artifact
 
-The artifact named `pdf-site-evaluation` that contains visual references, generated screenshots, difference images, metrics, and the HTML report.
+The artifact named `pdf-site-evaluation` that contains visual references, generated screenshots, difference images, metrics, and the HTML report. The name predates SVG sources and covers both formats.
 
 ## Workflow SHA
 

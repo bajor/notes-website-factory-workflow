@@ -2,7 +2,8 @@
 type: BDR
 title: Reusable workflow build contract
 description: Observable input validation, artifact production, failure, and deployment-boundary behavior.
-status: Accepted
+status: Superseded
+superseded_by: "0024"
 timestamp: 2026-08-23
 ---
 # Reusable Workflow Build Contract

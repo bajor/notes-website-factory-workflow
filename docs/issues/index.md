@@ -19,3 +19,4 @@
 - [Issue 0017: Reconstruct sub-pixel strokes](/issues/0017-reconstruct-sub-pixel-strokes.md) - Done. Make soft sub-pixel handwriting crisp at high zoom and redeploy both consumers.
 - [Issue 0018: Stabilize close zoom](/issues/0018-stabilize-close-zoom.md) - Done. Bound SVG rendering, redeploy the GCP consumer, and remove factory Pages deployments.
 - [Issue 0019: Fix WebKit close-zoom culling](/issues/0019-webkit-close-zoom-culling.md) - In Progress. Stop traced strokes from flickering in WebKit and redeploy the GCP consumer.
+- [Issue 0020: Support SVG sources](/issues/0020-support-svg-sources.md) - In Progress. Accept one self-contained SVG, make the documentation source-neutral, and validate the first real export.

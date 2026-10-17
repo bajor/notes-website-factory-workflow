@@ -3,12 +3,14 @@
 -- | Produce evidence for the software-factory feedback loop.
 --
 -- The deployed page never uses a rendered PDF. During development, however,
--- a mature renderer is a useful oracle. We compare that oracle with a browser
--- screenshot of our generated DOM/SVG scene and keep the difference image
--- as evidence for the next parser iteration.
+-- a rendering of the source outside the viewer is a useful oracle: Poppler for
+-- a PDF, and Chromium drawing the source as an isolated image for an SVG. We
+-- compare that oracle with a browser screenshot of our generated DOM/SVG scene
+-- and keep the difference image as evidence for the next iteration.
 module Factory.Evaluation
   ( CaptureTile (..)
   , EvaluationResult (..)
+  , Reference (..)
   , bodyIsReady
   , calculateDifference
   , captureTiles
@@ -26,7 +28,7 @@ import Codec.Picture
   , readImage
   , writePng
   )
-import Control.Exception (IOException, try)
+import Control.Exception (IOException, finally, try)
 import Control.Monad (forM_)
 import Control.Monad.Primitive (PrimMonad, PrimState)
 import Control.Monad.ST (runST)
@@ -36,11 +38,11 @@ import Data.Maybe (mapMaybe)
 import Data.Ord (Down (Down))
 import Data.Text (Text)
 import Data.Word (Word8)
-import Factory.Domain (BuildError (EvaluationError))
-import System.Directory (createDirectoryIfMissing, doesPathExist, makeAbsolute, removePathForcibly)
+import Factory.Domain (BoardSpace, BuildError (EvaluationError), Coordinate (unCoordinate))
+import System.Directory (copyFile, createDirectoryIfMissing, doesPathExist, makeAbsolute, removePathForcibly)
 import System.Exit (ExitCode (ExitSuccess))
 import System.Environment (lookupEnv)
-import System.FilePath (takeDirectory, takeFileName, (</>))
+import System.FilePath (dropExtension, takeDirectory, takeFileName, (</>))
 import System.IO (IOMode (ReadMode), withBinaryFile)
 import System.Process (readProcessWithExitCode)
 import qualified Data.ByteString as ByteString
@@ -65,6 +67,13 @@ data EvaluationResult = EvaluationResult
   , evaluationPassed :: Bool
   }
   deriving stock (Eq, Show)
+
+-- | The rendering of the source that generated screenshots are compared with.
+data Reference
+  = -- | Poppler renders the source PDF.
+    PopplerReference FilePath
+  | -- | Chromium draws the source SVG as an isolated image, outside the viewer, at the given board width and height.
+    BrowserReference FilePath (Coordinate BoardSpace) (Coordinate BoardSpace)
 
 data ScaleEvaluation = ScaleEvaluation Int EvaluationResult
 
@@ -106,41 +115,54 @@ maximumCaptureWidth = 8192
 maximumCaptureHeight :: Int
 maximumCaptureHeight = 4096
 
-runVisualEvaluation :: FilePath -> FilePath -> FilePath -> IO (Either BuildError EvaluationResult)
-runVisualEvaluation pdfPath siteDirectory reportDirectory = do
+-- | Evaluation DPIs count board units at 72 per inch, the PDF point.
+boardUnitsPerInch :: Int
+boardUnitsPerInch = 72
+
+-- | Scratch space for the SVG reference page, removed after evaluation.
+referencePageDirectory :: FilePath
+referencePageDirectory = ".svg-reference"
+
+runVisualEvaluation :: Reference -> FilePath -> FilePath -> IO (Either BuildError EvaluationResult)
+runVisualEvaluation reference siteDirectory reportDirectory = do
   reportExists <- doesPathExist reportDirectory
   if reportExists then removePathForcibly reportDirectory else pure ()
   createDirectoryIfMissing True reportDirectory
   absoluteSite <- makeAbsolute siteDirectory
-  evaluated <- evaluateScales absoluteSite referenceDpis
-  case evaluated of
-    Left buildError -> pure (Left buildError)
-    Right scales -> do
-      let result = aggregateResults scales
-      details <- evaluateDetails pdfPath absoluteSite reportDirectory
-      case details of
-        Left buildError -> pure (Left buildError)
-        Right crops -> writeReports reportDirectory scales crops result >> pure (Right result)
+  absoluteReport <- makeAbsolute reportDirectory
+  -- Preparation can fail after copying the source, so cleanup covers it too.
+  ( prepareReference reference absoluteReport
+      >>= either (pure . Left . EvaluationError) (const (evaluateAll absoluteSite absoluteReport))
+    )
+    `finally` removeReferencePage absoluteReport
   where
-    evaluateScales _ [] = pure (Right [])
-    evaluateScales absoluteSite (dpi : remaining) = do
-      evaluated <- evaluateScale pdfPath absoluteSite reportDirectory dpi
+    evaluateAll absoluteSite absoluteReport = do
+      evaluated <- evaluateScales absoluteSite absoluteReport referenceDpis
       case evaluated of
         Left buildError -> pure (Left buildError)
-        Right scale -> fmap (fmap (scale :)) (evaluateScales absoluteSite remaining)
+        Right scales -> do
+          let result = aggregateResults scales
+          details <- evaluateDetails reference absoluteSite absoluteReport
+          case details of
+            Left buildError -> pure (Left buildError)
+            Right crops -> writeReports absoluteReport reference scales crops result >> pure (Right result)
+    evaluateScales _ _ [] = pure (Right [])
+    evaluateScales absoluteSite absoluteReport (dpi : remaining) = do
+      evaluated <- evaluateScale reference absoluteSite absoluteReport dpi
+      case evaluated of
+        Left buildError -> pure (Left buildError)
+        Right scale -> fmap (fmap (scale :)) (evaluateScales absoluteSite absoluteReport remaining)
 
-evaluateScale :: FilePath -> FilePath -> FilePath -> Int -> IO (Either BuildError ScaleEvaluation)
-evaluateScale pdfPath absoluteSite reportDirectory dpi =
-  fmap (fmap (ScaleEvaluation dpi . snd)) (renderComparison pdfPath absoluteSite reportDirectory ("-" <> show dpi) dpi Nothing)
+evaluateScale :: Reference -> FilePath -> FilePath -> Int -> IO (Either BuildError ScaleEvaluation)
+evaluateScale reference absoluteSite reportDirectory dpi =
+  fmap (fmap (ScaleEvaluation dpi . snd)) (renderComparison reference absoluteSite reportDirectory ("-" <> show dpi) dpi Nothing)
 
-renderComparison :: FilePath -> FilePath -> FilePath -> String -> Int -> Maybe CaptureTile -> IO (Either BuildError (CaptureTile, EvaluationResult))
-renderComparison pdfPath absoluteSite reportDirectory suffix dpi region = do
-  let referenceStem = reportDirectory </> "reference" <> suffix
-      referencePath = referenceStem <> ".png"
+renderComparison :: Reference -> FilePath -> FilePath -> String -> Int -> Maybe CaptureTile -> IO (Either BuildError (CaptureTile, EvaluationResult))
+renderComparison reference absoluteSite reportDirectory suffix dpi region = do
+  let referencePath = reportDirectory </> "reference" <> suffix <> ".png"
       generatedPath = reportDirectory </> "generated" <> suffix <> ".png"
       differencePath = reportDirectory </> "difference" <> suffix <> ".png"
-      cropArguments (CaptureTile x y width height) = ["-x", show x, "-y", show y, "-W", show width, "-H", show height]
-  referenceExit <- runTool "pdftoppm" (["-singlefile", "-png", "-r", show dpi] <> maybe [] cropArguments region <> [pdfPath, referenceStem])
+  referenceExit <- renderReference reference reportDirectory dpi region referencePath
   case referenceExit of
     Left message -> pure (Left (EvaluationError message))
     Right () -> do
@@ -154,11 +176,75 @@ renderComparison pdfPath absoluteSite reportDirectory suffix dpi region = do
             Left message -> pure (Left (EvaluationError message))
             Right () -> fmap (capture,) <$> compareImagePaths referencePath generatedPath differencePath
 
-evaluateDetails :: FilePath -> FilePath -> FilePath -> IO (Either BuildError [DetailEvaluation])
-evaluateDetails pdfPath siteDirectory directory = do
-  reference <- readRgb (directory </> "reference-" <> show detailSelectionDpi <> ".png")
-  generated <- readRgb (directory </> "generated-" <> show detailSelectionDpi <> ".png")
-  case (,) <$> reference <*> generated >>= uncurry selectDetailRegions of
+-- | Render the reference PNG for the whole board, or for an output-pixel region of it.
+renderReference :: Reference -> FilePath -> Int -> Maybe CaptureTile -> FilePath -> IO (Either Text ())
+renderReference reference reportDirectory dpi region outputPath = case reference of
+  -- pdftoppm appends the extension to the output stem itself.
+  PopplerReference pdf -> runTool "pdftoppm" (["-singlefile", "-png", "-r", show dpi] <> maybe [] cropArguments region <> [pdf, dropExtension outputPath])
+  BrowserReference _ width height -> do
+    let board = CaptureTile 0 0 (scaledPixels width) (scaledPixels height)
+    case maybe (Just board) (clipToBoard board) region of
+      Nothing -> pure (Left "reference region lies outside the board")
+      Just capture -> do
+        browser <- browserCommand
+        capturePage browser (referencePageUrl width height) outputPath capture
+  where
+    cropArguments (CaptureTile x y width height) = ["-x", show x, "-y", show y, "-W", show width, "-H", show height]
+    scaledPixels size = ceiling (unCoordinate size * fromIntegral dpi / fromIntegral boardUnitsPerInch) :: Int
+    referencePageUrl width height x y =
+      "file://" <> reportDirectory </> referencePageDirectory </> "index.html"
+        <> evaluationQuery dpi x y
+        <> "&width=" <> show (unCoordinate width)
+        <> "&height=" <> show (unCoordinate height)
+    clipToBoard (CaptureTile _ _ boardWidth boardHeight) (CaptureTile x y width height)
+      | x >= boardWidth || y >= boardHeight = Nothing
+      | otherwise = Just (CaptureTile x y (min width (boardWidth - x)) (min height (boardHeight - y)))
+
+prepareReference :: Reference -> FilePath -> IO (Either Text ())
+prepareReference reference reportDirectory = case reference of
+  PopplerReference _ -> pure (Right ())
+  BrowserReference svg _ _ -> do
+    let directory = reportDirectory </> referencePageDirectory
+    prepared <- try $ do
+      createDirectoryIfMissing True directory
+      copyFile svg (directory </> "source.svg")
+      Text.writeFile (directory </> "index.html") browserReferencePage
+    pure (either (\exception -> Left (Text.pack (show (exception :: IOException)))) Right prepared)
+
+removeReferencePage :: FilePath -> IO ()
+removeReferencePage reportDirectory = do
+  let directory = reportDirectory </> referencePageDirectory
+  exists <- doesPathExist directory
+  if exists then removePathForcibly directory else pure ()
+
+-- | Draw the copied source SVG at the requested evaluation scale and origin,
+-- read from the same URL parameters as the site, without the viewer runtime.
+-- A window-sized SVG coordinate window places it, because browsers snap an HTML
+-- image box to whole pixels, which would stretch a fractional board. Headless
+-- Chromium resizes the window after loading, so the window is placed again.
+browserReferencePage :: Text
+browserReferencePage =
+  Text.unlines
+    [ "<!doctype html>"
+    , "<html><head><meta charset=\"utf-8\"><style>html,body{margin:0;overflow:hidden;background:white}svg{position:fixed;inset:0;display:block}</style></head>"
+    , "<body><svg id=\"reference\" width=\"100%\" height=\"100%\" preserveAspectRatio=\"none\"><image href=\"source.svg\" x=\"0\" y=\"0\"/></svg><script>"
+    , "const parameters = new URLSearchParams(location.search);"
+    , "const scale = Number(parameters.get('evaluation')) / " <> Text.pack (show boardUnitsPerInch) <> ";"
+    , "const reference = document.getElementById('reference');"
+    , "const origin = [Number(parameters.get('evaluation-x')), Number(parameters.get('evaluation-y'))];"
+    , "const place = () => reference.setAttribute('viewBox', [origin[0] / scale, origin[1] / scale, innerWidth / scale, innerHeight / scale].join(' '));"
+    , "place();"
+    , "addEventListener('resize', place);"
+    , "reference.firstElementChild.setAttribute('width', parameters.get('width'));"
+    , "reference.firstElementChild.setAttribute('height', parameters.get('height'));"
+    , "</script></body></html>"
+    ]
+
+evaluateDetails :: Reference -> FilePath -> FilePath -> IO (Either BuildError [DetailEvaluation])
+evaluateDetails reference siteDirectory directory = do
+  referenceImage <- readRgb (directory </> "reference-" <> show detailSelectionDpi <> ".png")
+  generatedImage <- readRgb (directory </> "generated-" <> show detailSelectionDpi <> ".png")
+  case (,) <$> referenceImage <*> generatedImage >>= uncurry selectDetailRegions of
     Left message -> pure (Left (EvaluationError message))
     Right regions -> captureAll [(number, dpi, region) | (number, region) <- zip [1 ..] regions, dpi <- detailDpis]
   where
@@ -167,7 +253,7 @@ evaluateDetails pdfPath siteDirectory directory = do
       let factor = dpi `div` detailSelectionDpi
           region = CaptureTile (x * factor) (y * factor) (width * factor) (height * factor)
           suffix = detailSuffix number dpi
-      result <- renderComparison pdfPath siteDirectory directory suffix dpi (Just region)
+      result <- renderComparison reference siteDirectory directory suffix dpi (Just region)
       case result of
         Left buildError -> pure (Left buildError)
         Right (capture, metrics) -> fmap (fmap (DetailEvaluation number dpi capture metrics :)) (captureAll remaining)
@@ -202,17 +288,12 @@ detailSuffix :: Int -> Int -> String
 detailSuffix number dpi = "-detail-" <> show number <> "-" <> show dpi
 
 runBrowser :: FilePath -> FilePath -> Int -> CaptureTile -> IO (Either Text ())
-runBrowser siteDirectory screenshotPath dpi (CaptureTile originX originY width height) = do
-  browser <- maybe "chromium" id <$> lookupEnv "CHROMIUM"
-  case captureTiles width height of
-    [] -> pure (Left "browser capture dimensions must be positive")
-    tiles -> do
-      ready <- checkBrowserReady browser
-      case ready of
-        Left message -> pure (Left message)
-        Right ()
-          | [tile] <- tiles -> runTool browser (browserArguments tile <> ["--screenshot=" <> screenshotPath, pageUrl tile])
-          | otherwise -> captureAndStitch browser tiles
+runBrowser siteDirectory screenshotPath dpi capture = do
+  browser <- browserCommand
+  ready <- checkBrowserReady browser
+  case ready of
+    Left message -> pure (Left message)
+    Right () -> capturePage browser sitePageUrl screenshotPath capture
   where
     checkBrowserReady browser = do
       rendered <- runToolOutput browser (browserArguments readinessTile <> ["--dump-dom", readinessUrl])
@@ -221,7 +302,25 @@ runBrowser siteDirectory screenshotPath dpi (CaptureTile originX originY width h
         if bodyIsReady html then Right () else Left "chromium did not report a completed scene"
     readinessTile = CaptureTile 0 0 1280 720
     readinessUrl = "file://" <> siteDirectory </> "index.html" <> "?evaluation=" <> show dpi <> "&readiness=1"
-    captureAndStitch browser tiles = do
+    sitePageUrl x y = "file://" <> siteDirectory </> "index.html" <> evaluationQuery dpi x y
+
+browserCommand :: IO FilePath
+browserCommand = maybe "chromium" id <$> lookupEnv "CHROMIUM"
+
+-- | The evaluation scale and output-pixel origin read by the site and the SVG reference page.
+evaluationQuery :: Int -> Int -> Int -> String
+evaluationQuery dpi x y = "?evaluation=" <> show dpi <> "&evaluation-x=" <> show x <> "&evaluation-y=" <> show y
+
+-- | Screenshot an output-pixel region of a page, in bounded tiles stitched together when it is large.
+capturePage :: FilePath -> (Int -> Int -> String) -> FilePath -> CaptureTile -> IO (Either Text ())
+capturePage browser pageUrl screenshotPath (CaptureTile originX originY width height) =
+  case captureTiles width height of
+    [] -> pure (Left "browser capture dimensions must be positive")
+    [tile] -> captureTile tile screenshotPath
+    tiles -> captureAndStitch tiles
+  where
+    captureTile tile path = runTool browser (browserArguments tile <> ["--screenshot=" <> path, pageUrl (originX + captureX tile) (originY + captureY tile)])
+    captureAndStitch tiles = do
       attempted <- try $ do
         createDirectoryIfMissing True tileDirectory
         captured <- captureAll tiles
@@ -240,32 +339,27 @@ runBrowser siteDirectory screenshotPath dpi (CaptureTile originX originY width h
       where
         captureAll [] = pure (Right ())
         captureAll (tile : remaining) = do
-          result <- captureTile tile
+          result <- captureTile tile (tilePath tile)
           case result of
             Left message -> pure (Left message)
             Right () -> captureAll remaining
-        captureTile tile = runTool browser (browserArguments tile <> ["--screenshot=" <> tilePath tile, pageUrl tile])
     cleanupTileDirectory = do
       exists <- doesPathExist tileDirectory
       if exists then removePathForcibly tileDirectory else pure ()
     tileDirectory = takeDirectory screenshotPath </> ".capture-tiles"
     tilePath tile = tileDirectory </> takeFileName screenshotPath <> ".tile-" <> show (captureX tile) <> "-" <> show (captureY tile) <> ".png"
-    pageUrl tile =
-      "file://"
-        <> siteDirectory </> "index.html"
-        <> "?evaluation=" <> show dpi
-        <> "&evaluation-x=" <> show (originX + captureX tile)
-        <> "&evaluation-y=" <> show (originY + captureY tile)
-    browserArguments tile =
-      [ "--headless"
-      , "--no-sandbox"
-      , "--disable-gpu"
-      , "--hide-scrollbars"
-      , "--allow-file-access-from-files"
-      , "--virtual-time-budget=15000"
-      , "--force-device-scale-factor=1"
-      , "--window-size=" <> show (captureWidth tile) <> "," <> show (captureHeight tile)
-      ]
+
+browserArguments :: CaptureTile -> [String]
+browserArguments tile =
+  [ "--headless"
+  , "--no-sandbox"
+  , "--disable-gpu"
+  , "--hide-scrollbars"
+  , "--allow-file-access-from-files"
+  , "--virtual-time-budget=15000"
+  , "--force-device-scale-factor=1"
+  , "--window-size=" <> show (captureWidth tile) <> "," <> show (captureHeight tile)
+  ]
 
 bodyIsReady :: Text -> Bool
 bodyIsReady html =
@@ -488,15 +582,16 @@ differenceChannel left right index = fromIntegral (min 255 (channelDifference le
 dimensions :: Image pixel -> (Int, Int)
 dimensions image = (imageWidth image, imageHeight image)
 
-writeReports :: FilePath -> [ScaleEvaluation] -> [DetailEvaluation] -> EvaluationResult -> IO ()
-writeReports directory scales details result = do
+writeReports :: FilePath -> Reference -> [ScaleEvaluation] -> [DetailEvaluation] -> EvaluationResult -> IO ()
+writeReports directory reference scales details result = do
   LazyByteString.writeFile (directory </> "evaluation.json") json
   Text.writeFile (directory </> "report.html") html
   where
     json =
       encode
         ( object
-            [ "meanError" .= evaluationMeanError result
+            [ "reference" .= referenceRenderer reference
+            , "meanError" .= evaluationMeanError result
             , "pixelsWithinTolerance" .= evaluationPixelsWithinTolerance result
             , "inkRatio" .= evaluationInkRatio result
             , "maximumMeanError" .= maximumMeanError
@@ -511,7 +606,8 @@ writeReports directory scales details result = do
         )
     html =
       Text.unlines
-        [ "<!doctype html><html><body><h1>Parser evaluation</h1>"
+        [ "<!doctype html><html><body><h1>Visual evaluation</h1>"
+        , "<p>Reference: " <> referenceRenderer reference <> "</p>"
         , "<p>Mean normalized channel error: " <> Text.pack (show (evaluationMeanError result)) <> "</p>"
         , "<p>Pixels within tolerance: " <> Text.pack (show (evaluationPixelsWithinTolerance result)) <> "</p>"
         , "<p>Generated/reference ink ratio: " <> Text.pack (show (evaluationInkRatio result)) <> "</p>"
@@ -559,3 +655,8 @@ writeReports directory scales details result = do
             , "<img src=\"generated" <> suffix <> ".png\" width=\"32%\" alt=\"Generated detail\">"
             , "<img src=\"difference" <> suffix <> ".png\" width=\"32%\" alt=\"Difference detail\">"
             ]
+
+referenceRenderer :: Reference -> Text
+referenceRenderer reference = case reference of
+  PopplerReference _ -> "Poppler rendering of the source PDF"
+  BrowserReference {} -> "Chromium rendering of the source SVG"

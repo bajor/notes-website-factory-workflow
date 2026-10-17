@@ -80,7 +80,7 @@ try {
   function assertBoardUnits() {
     const matrixTolerance = 1e-6;
     const board = svg.getScreenCTM();
-    for (const element of svg.querySelectorAll('g[clip-path], .scene-vector-artwork, .scene-vector-artwork path')) {
+    for (const element of svg.querySelectorAll('g[clip-path], .scene-vector-artwork, .scene-vector-artwork path, .scene-svg-document')) {
       const local = element.getScreenCTM();
       if (['a', 'b', 'c', 'd', 'e', 'f'].some((key) => Math.abs(local[key] - board[key]) > matrixTolerance)) {
         throw new Error('Vector content left board units');

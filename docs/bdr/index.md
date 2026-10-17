@@ -1,7 +1,7 @@
 # Behavior Decisions
 
 - [BDR 0001: Mixed scene output](/bdr/0001-mixed-scene-output.md) - Superseded by BDR 0003.
-- [BDR 0002: Reusable workflow build contract](/bdr/0002-reusable-workflow-build-contract.md) - Accepted. Define source-independent build, evidence, artifact, and failure behavior.
+- [BDR 0002: Reusable workflow build contract](/bdr/0002-reusable-workflow-build-contract.md) - Superseded by BDR 0024.
 - [BDR 0003: Source-independent mixed scene output](/bdr/0003-source-independent-mixed-scene-output.md) - Superseded by BDR 0004.
 - [BDR 0004: Interactive linked-card output](/bdr/0004-interactive-linked-card-output.md) - Superseded by BDR 0005.
 - [BDR 0005: Fidelity-preserving mixed scene output](/bdr/0005-fidelity-preserving-mixed-scene-output.md) - Superseded by BDR 0011.
@@ -23,3 +23,4 @@
 - [BDR 0021: Reconstructed sub-pixel strokes](/bdr/0021-reconstructed-sub-pixel-strokes.md) - Accepted. Redraw narrow single-color sub-pixel strokes as crisp opaque curves; keep other untraceable marks raster.
 - [BDR 0022: Bounded zoom rendering](/bdr/0022-bounded-zoom-rendering.md) - Accepted. Keep the visual surface within the viewport and preserve zoom anchors and overlay alignment.
 - [BDR 0023: WebKit close-zoom visibility](/bdr/0023-webkit-close-zoom-visibility.md) - Accepted. Keep traced artwork visible and stable in WebKit throughout close-up zoom by emitting it in board points.
+- [BDR 0024: PDF and SVG build contract](/bdr/0024-pdf-and-svg-build-contract.md) - Accepted. Define discovery, SVG validation and rendering, evaluation, artifact, and failure behavior for both formats.

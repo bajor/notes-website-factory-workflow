@@ -1,0 +1,17 @@
+name: CI SVG
+
+# A separate run keeps this call's github-pages and pdf-site-evaluation
+# artifacts from colliding with the PDF fixture call in ci.yml.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  reusable-workflow:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-pdf-site.yml
+    with:
+      site-title: Notes Website Factory SVG Fixture
+      source-directory: generator/test/fixtures/svg
