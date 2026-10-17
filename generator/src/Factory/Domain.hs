@@ -209,8 +209,8 @@ data SceneNode
   | PathNode [PathCommand] PaintStyle [ClipPath]
   | TextNode TextRun [ClipPath]
   | LinkNode LinkTarget (Rect BoardSpace)
-  | -- | A self-contained SVG file drawn unchanged, as an isolated image, over the given board rectangle.
-    SvgDocumentNode FilePath (Rect BoardSpace)
+  | -- | A self-contained SVG, given as a data URI, drawn unchanged as an isolated image over the board rectangle.
+    SvgDocumentNode Text (Rect BoardSpace)
   deriving stock (Eq, Show)
 
 -- | The phase parameter makes unvalidated scenes unusable by the emitter.
@@ -355,10 +355,10 @@ instance ToJSON SceneNode where
         , "target" .= encodeTarget target
         , "bounds" .= bounds
         ]
-    SvgDocumentNode file bounds ->
+    SvgDocumentNode href bounds ->
       object
         [ "kind" .= ("svg-document" :: Text)
-        , "file" .= file
+        , "href" .= href
         , "bounds" .= bounds
         ]
     where

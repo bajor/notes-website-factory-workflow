@@ -22,7 +22,7 @@ import Factory.Domain
 import Factory.Evaluation (EvaluationResult (..), Reference (..), runVisualEvaluation)
 import Factory.Pdf (ParsedPdf (..), PdfSummary (..), parsePdf)
 import Factory.Site (validateScene, writeSite)
-import Factory.Svg (SvgBoard (..), loadSvg, readSvgBoard, svgScene)
+import Factory.Svg (SvgBoard (..), ValidatedSvg (..), readSvg, svgScene)
 import System.Directory
   ( canonicalizePath
   , createDirectoryIfMissing
@@ -75,16 +75,16 @@ sourcePath source = case source of
   PdfSource path -> path
   SvgSource path -> path
 
--- | Read the source into an unvalidated scene and a summary, writing its assets.
+-- | Read the source into an unvalidated scene and a summary, writing any raster assets.
 loadSource :: Source -> FilePath -> IO (Either BuildError (Scene 'Unvalidated, Text))
 loadSource source assetDirectory = case source of
   PdfSource pdf -> fmap (\parsed -> (parsedScene parsed, pdfSummaryText pdf (parsedSummary parsed))) <$> parsePdf pdf assetDirectory
-  SvgSource svg -> fmap (\board -> (svgScene board, svgSummaryText svg board)) <$> loadSvg svg assetDirectory
+  SvgSource svg -> fmap (\validated -> (svgScene validated, svgSummaryText svg (validatedBoard validated))) <$> readSvg svg
 
 evaluationReference :: Source -> IO (Either BuildError Reference)
 evaluationReference source = case source of
   PdfSource pdf -> pure (Right (PopplerReference pdf))
-  SvgSource svg -> fmap (\(SvgBoard width height) -> BrowserReference svg width height) <$> readSvgBoard svg
+  SvgSource svg -> fmap (\(ValidatedSvg (SvgBoard width height) _) -> BrowserReference svg width height) <$> readSvg svg
 
 inspectRepository :: FilePath -> FilePath -> IO (Either BuildError Text)
 inspectRepository sourceRoot workDirectory = do

@@ -3,10 +3,10 @@
 -- | Produce evidence for the software-factory feedback loop.
 --
 -- The deployed page never uses a rendered PDF. During development, however,
--- an independent rendering of the source is a useful oracle: Poppler for a PDF
--- and the browser's direct rendering for an SVG. We compare that oracle with a
--- browser screenshot of our generated DOM/SVG scene and keep the difference
--- image as evidence for the next iteration.
+-- a rendering of the source outside the viewer is a useful oracle: Poppler for
+-- a PDF, and Chromium drawing the source as an isolated image for an SVG. We
+-- compare that oracle with a browser screenshot of our generated DOM/SVG scene
+-- and keep the difference image as evidence for the next iteration.
 module Factory.Evaluation
   ( CaptureTile (..)
   , EvaluationResult (..)

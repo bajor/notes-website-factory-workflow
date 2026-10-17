@@ -14,7 +14,7 @@ import Factory.Interpreter (ColorSpaceResource (SupportedColorSpace, Unsupported
 import Factory.Pipeline (outputCompanionPaths, sourceAt, validateOutputPath)
 import Factory.Pdf (classifyUrl, rejectDecode, rgbaImage)
 import Factory.Site (renderIndexTemplate, validateScene)
-import Factory.Svg (SvgBoard (SvgBoard), interpretSvg)
+import Factory.Svg (SvgBoard (SvgBoard), ValidatedSvg (ValidatedSvg), interpretSvg, svgScene)
 import Factory.Vectorize (ArtworkPartition (..), ImageDisposition (..), classifyImage, opaqueHighlighter, partitionArtwork, traceImage, traceReconstructedImage, traceSmoothImage)
 import Pdf.Content (Op (..), Operator)
 import Pdf.Core (Object (Array, Name, Number))
@@ -378,8 +378,8 @@ svgTests =
           result -> assertFailure ("unexpected SVG result: " <> show result)
     , testCase "scripts are rejected" $
         interpretSvg (sizedSvg "<script>run()</script>") @?= Left (UnsupportedSvg "SVG scripts are not supported")
-    , testCase "scripts in other namespaces are rejected" $
-        interpretSvg (sizedSvg "<h:script xmlns:h=\"http://www.w3.org/1999/xhtml\">run()</h:script>") @?= Left (UnsupportedSvg "SVG scripts are not supported")
+    , testCase "XHTML content is rejected" $
+        interpretSvg (sizedSvg "<h:iframe xmlns:h=\"http://www.w3.org/1999/xhtml\" srcdoc=\"page\"/>") @?= Left (UnsupportedSvg "SVG content in the XHTML namespace is not supported")
     , testCase "event handler attributes are rejected" $
         interpretSvg (sizedSvg "<rect width=\"1\" height=\"1\" onclick=\"run()\"/>") @?= Left (UnsupportedSvg "SVG event handler attributes are not supported")
     , testCase "hyperlinks are rejected" $
@@ -395,12 +395,13 @@ svgTests =
           @?= Left (UnsupportedSvg "SVG references an external resource: https://example.com/a.woff2")
     , testCase "stylesheet imports are rejected" $
         interpretSvg (sizedSvg "<style>@import 'theme.css';</style>") @?= Left (UnsupportedSvg "SVG stylesheets must not import other stylesheets")
-    , testCase "style elements in other namespaces are checked" $
-        interpretSvg (sizedSvg "<style xmlns=\"http://www.w3.org/1999/xhtml\">@import 'theme.css';</style>") @?= Left (UnsupportedSvg "SVG stylesheets must not import other stylesheets")
-    , testCase "use elements must reference an element in the same file" $
-        interpretSvg (sizedSvg "<use href=\"data:image/svg+xml,%3Csvg/%3E\"/>") @?= Left (UnsupportedSvg "SVG use elements must reference an element in the same file")
+    , testCase "a style element's text nodes are checked as one stylesheet" $
+        interpretSvg (sizedSvg "<style>@imp<!-- -->ort 'theme.css';</style>") @?= Left (UnsupportedSvg "SVG stylesheets must not import other stylesheets")
+    , testCase "non-image references must name an element in the same file" $
+        interpretSvg (sizedSvg "<text><textPath href=\"data:image/svg+xml,x#p\">t</textPath></text>")
+          @?= Left (UnsupportedSvg "SVG textPath elements must reference an element in the same file")
     , testCase "entity references in namespace declarations are rejected" $
-        interpretSvg "<!DOCTYPE svg [<!ENTITY x \"http://www.w3.org/1999/xlink\">]><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"&x;\" width=\"10\" height=\"10\"><image xlink:href=\"photo.png\"/></svg>"
+        interpretSvg "<!DOCTYPE svg [<!ENTITY x \"1999/xlink\">]><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:l=\"http://www.w3.org/&x;\" width=\"10\" height=\"10\"><image l:href=\"photo.png\"/></svg>"
           @?= Left (InvalidSvg "namespace declarations must not use entity references")
     , testCase "external stylesheet instructions are rejected" $
         interpretSvg ("<?xml-stylesheet href=\"theme.css\"?>" <> sizedSvg "") @?= Left (UnsupportedSvg "external SVG stylesheets are not supported")
@@ -410,13 +411,15 @@ svgTests =
     , testCase "data URIs are accepted regardless of case" $
         interpretSvg (sizedSvg "<image width=\"1\" height=\"1\" href=\"DATA:image/png;base64,AAAA\"/>") @?= Right (SvgBoard 10 10)
     , testCase "an SVG document without area is rejected" $
-        validateScene (sceneWith [] [SvgDocumentNode "assets/board.svg" (Rect 0 0 0 480)])
+        validateScene (sceneWith [] [SvgDocumentNode "data:image/svg+xml;base64,PHN2Zy8+" (Rect 0 0 0 480)])
           @?= Left (InvalidScene "scene contains an invalid size, color, or opacity")
-    , testCase "SVG documents serialize their file and board bounds" $
-        toJSON (SvgDocumentNode "assets/board.svg" (Rect 0 0 640 480))
+    , testCase "SVG documents embed the exact source bytes as a data URI" $
+        sceneNodes (svgScene (ValidatedSvg (SvgBoard 10 10) "<svg/>")) @?= [SvgDocumentNode "data:image/svg+xml;base64,PHN2Zy8+" (Rect 0 0 10 10)]
+    , testCase "SVG documents serialize their href and board bounds" $
+        toJSON (SvgDocumentNode "data:image/svg+xml;base64,PHN2Zy8+" (Rect 0 0 640 480))
           @?= object
             [ "kind" .= ("svg-document" :: Text.Text)
-            , "file" .= ("assets/board.svg" :: Text.Text)
+            , "href" .= ("data:image/svg+xml;base64,PHN2Zy8+" :: Text.Text)
             , "bounds" .= object ["x" .= (0 :: Double), "y" .= (0 :: Double), "width" .= (640 :: Double), "height" .= (480 :: Double)]
             ]
     ]

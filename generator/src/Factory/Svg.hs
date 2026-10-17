@@ -3,15 +3,15 @@
 
 -- | The effectful boundary around SVG source documents.
 --
--- The generated site shows the source SVG unchanged, as an isolated image.
--- Browsers draw such an image without scripts, links, or external files and
--- drop that content without reporting an error. This module therefore accepts
--- only self-contained SVG and rejects everything the image would lose.
+-- The generated site shows the source SVG unchanged, as an isolated image
+-- embedded in the scene. Browsers draw such an image without scripts, links,
+-- or external files and drop that content without reporting an error. This
+-- module therefore rejects the forms of that content it can recognize.
 module Factory.Svg
   ( SvgBoard (..)
+  , ValidatedSvg (..)
   , interpretSvg
-  , loadSvg
-  , readSvgBoard
+  , readSvg
   , svgScene
   ) where
 
@@ -22,12 +22,12 @@ import Data.Char (toLower)
 import Data.Foldable (traverse_)
 import Data.Text (Text)
 import Factory.Domain
-import System.Directory (createDirectoryIfMissing)
-import System.FilePath ((</>))
 import qualified Data.ByteString as ByteString
+import qualified Data.ByteString.Base64 as Base64
 import qualified Data.ByteString.Lazy as LazyByteString
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as Text
+import qualified Data.Text.Encoding as Text
 import qualified Data.Text.Read as Text
 import qualified Text.XML as Xml
 
@@ -38,35 +38,33 @@ data SvgBoard = SvgBoard
   }
   deriving stock (Eq, Show)
 
+-- | A source that passed validation, with the exact bytes the site embeds.
+data ValidatedSvg = ValidatedSvg
+  { validatedBoard :: SvgBoard
+  , validatedBytes :: ByteString.ByteString
+  }
+
 -- | A root size attribute; percentages give no size, as for an image in a browser.
 data RootLength = AbsoluteLength Double | NoLength
 
-svgNamespace, xlinkNamespace :: Text
+svgNamespace, xlinkNamespace, xhtmlNamespace :: Text
 svgNamespace = "http://www.w3.org/2000/svg"
 xlinkNamespace = "http://www.w3.org/1999/xlink"
+xhtmlNamespace = "http://www.w3.org/1999/xhtml"
 
--- | The copied source keeps a fixed name so the site never depends on consumer filenames.
-boardFileName :: FilePath
-boardFileName = "board.svg"
+readSvg :: FilePath -> IO (Either BuildError ValidatedSvg)
+readSvg path = do
+  source <- try (ByteString.readFile path)
+  pure $ case source of
+    Left exception -> Left (IoError (Text.pack (displayException (exception :: IOException))))
+    Right bytes -> (`ValidatedSvg` bytes) <$> interpretSvg (LazyByteString.fromStrict bytes)
 
-readSvgBoard :: FilePath -> IO (Either BuildError SvgBoard)
-readSvgBoard path = (>>= interpretSvg) <$> readSource path
-
--- | Validate the SVG and write the exact validated bytes into the asset directory.
-loadSvg :: FilePath -> FilePath -> IO (Either BuildError SvgBoard)
-loadSvg path assetDirectory = do
-  source <- readSource path
-  case source >>= \bytes -> (bytes,) <$> interpretSvg bytes of
-    Left buildError -> pure (Left buildError)
-    Right (bytes, board) -> do
-      written <- try $ do
-        createDirectoryIfMissing True assetDirectory
-        LazyByteString.writeFile (assetDirectory </> boardFileName) bytes
-      pure (either (Left . ioBuildError) (const (Right board)) written)
-
-svgScene :: SvgBoard -> Scene 'Unvalidated
-svgScene (SvgBoard width height) =
-  Scene width height [] [SvgDocumentNode ("assets/" <> boardFileName) (Rect 0 0 width height)]
+-- | Embed the exact source bytes as a data URI. No standalone SVG file is
+-- published, so a browser can never open the source as a document that runs
+-- content the validator did not recognize.
+svgScene :: ValidatedSvg -> Scene 'Unvalidated
+svgScene (ValidatedSvg (SvgBoard width height) bytes) =
+  Scene width height [] [SvgDocumentNode ("data:image/svg+xml;base64," <> Text.decodeLatin1 (Base64.encode bytes)) (Rect 0 0 width height)]
 
 interpretSvg :: LazyByteString.ByteString -> Either BuildError SvgBoard
 interpretSvg bytes = do
@@ -81,12 +79,6 @@ interpretSvg bytes = do
   traverse_ checkInstruction (documentInstructions document)
   traverse_ checkElement elements
   pure board
-
-readSource :: FilePath -> IO (Either BuildError LazyByteString.ByteString)
-readSource path = either (Left . ioBuildError) (Right . LazyByteString.fromStrict) <$> try (ByteString.readFile path)
-
-ioBuildError :: IOException -> BuildError
-ioBuildError = IoError . Text.pack . displayException
 
 svgName :: Text -> Xml.Name
 svgName localName = Xml.Name localName (Just svgNamespace) Nothing
@@ -150,15 +142,17 @@ descendants element = element : concat [descendants child | Xml.NodeElement chil
 
 usesEntityNamespace :: Xml.Element -> Bool
 usesEntityNamespace element =
-  any (maybe False ("&" `Text.isPrefixOf`) . Xml.nameNamespace) (Xml.elementName element : Map.keys (Xml.elementAttributes element))
+  any (maybe False ("&" `Text.isInfixOf`) . Xml.nameNamespace) (Xml.elementName element : Map.keys (Xml.elementAttributes element))
 
--- | Element names are matched in every namespace, because browsers also run
--- XHTML scripts and apply XHTML styles inside SVG.
+-- | Element names are matched in every namespace, and XHTML elements are
+-- rejected outright, because browsers act on XHTML content inside SVG.
 checkElement :: Xml.Element -> Either BuildError ()
 checkElement element = do
+  when (Xml.nameNamespace (Xml.elementName element) == Just xhtmlNamespace) (unsupported "SVG content in the XHTML namespace is not supported")
   traverse_ unsupported (lookup localName unsupportedElements)
   traverse_ (checkAttribute localName) (Map.toList (Xml.elementAttributes element))
-  when (localName == "style") (traverse_ checkStylesheet [css | Xml.NodeContent css <- children])
+  -- Browsers join a style element's text nodes before parsing the stylesheet.
+  when (localName == "style") (checkStylesheet (Text.concat [css | Xml.NodeContent css <- children]))
   traverse_ checkInstruction [instruction | Xml.NodeInstruction instruction <- children]
   where
     localName = Xml.nameLocalName (Xml.elementName element)
@@ -175,8 +169,8 @@ checkAttribute :: Text -> (Xml.Name, Text) -> Either BuildError ()
 checkAttribute elementName (name, value)
   | Xml.nameNamespace name == Nothing && "on" `Text.isPrefixOf` Text.map toLower (Xml.nameLocalName name) =
       unsupported "SVG event handler attributes are not supported"
-  | isHref && elementName == "use" = checkUseReference value
-  | isHref = checkReference value
+  | isHref && elementName `elem` ["image", "feImage"] = checkReference value
+  | isHref = checkElementReference elementName value
   | otherwise = traverse_ checkReference (cssUrlTargets value)
   where
     isHref = Xml.nameLocalName name == "href" && Xml.nameNamespace name `elem` [Nothing, Just xlinkNamespace]
@@ -194,11 +188,12 @@ checkReference reference
   where
     target = Text.strip reference
 
--- | Browsers draw nothing for a @use@ element that targets a data URI.
-checkUseReference :: Text -> Either BuildError ()
-checkUseReference reference
+-- | Only image elements load a data URI; other references name an element,
+-- and browsers draw nothing for one that targets a data URI.
+checkElementReference :: Text -> Text -> Either BuildError ()
+checkElementReference elementName reference
   | "#" `Text.isPrefixOf` Text.strip reference = Right ()
-  | otherwise = unsupported "SVG use elements must reference an element in the same file"
+  | otherwise = unsupported ("SVG " <> elementName <> " elements must reference an element in the same file")
 
 -- | The targets of every CSS @url(...)@ in a value, without quotes.
 --

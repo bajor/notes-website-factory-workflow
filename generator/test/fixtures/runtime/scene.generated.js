@@ -42,7 +42,7 @@ export const scene = {
     },
     {
       kind: 'svg-document',
-      file: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='1'%3E%3Cpath fill='green' d='M0 0h2v1H0z'/%3E%3C/svg%3E",
+      href: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='1'%3E%3Cpath fill='green' d='M0 0h2v1H0z'/%3E%3C/svg%3E",
       bounds: { x: 120, y: 100, width: 60, height: 30 },
     },
     {

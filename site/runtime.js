@@ -112,7 +112,7 @@ function addSvgDocument(node) {
   image.setAttribute('y', node.bounds.y);
   image.setAttribute('width', node.bounds.width);
   image.setAttribute('height', node.bounds.height);
-  const loaded = loadImage(image, node.file);
+  const loaded = loadImage(image, node.href);
   appendVisual(image, []);
   return loaded;
 }
