@@ -56,7 +56,7 @@ This BDR replaces [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md). Its
 9. Given a caller that omits `source-directory`, when the workflow runs, then discovery searches the repository root as before.
 10. Given a `source-directory` that is missing, is not a directory, or resolves outside the consumer checkout, when the workflow starts, then it fails before building.
 11. Given an SVG with absolute root `width` and `height`, when it is interpreted, then the board measures those lengths in CSS pixels. Given neither, the board takes the `viewBox` size. Given exactly one, the build fails.
-12. Given a valid SVG, when the site is built, then `assets/board.svg` is byte-identical to the source and the scene holds one `svg-document` node covering the board.
+12. Given a valid SVG, when the site is built, then the scene holds one `svg-document` node covering the board, its `href` is a base64 `data:` URI of the exact source bytes, and the site contains no standalone SVG file.
 13. Given an `svg-document` node, when the viewer renders and zooms it, then its `<image>` keeps board units without a transform, and readiness waits for it to load.
 14. Given an SVG source, when evaluation runs, then the reference is Chromium's rendering of the source as an isolated image at the board size, outside the viewer, and the evidence names that reference.
 
@@ -74,7 +74,7 @@ This BDR replaces [BDR 0002](/bdr/0002-reusable-workflow-build-contract.md). Its
 | 8 | Focused path-relation tests and symlink and overlap CLI checks | Input, site, and evidence ownership cannot be erased or mixed. |
 | 9, 10 | Local execution of the resolve step for default, nested, `..`, symlink-escape, missing, file, and absolute inputs | Only directories inside the checkout are searched. |
 | 11 | `interpretSvg` board-size unit tests | Each size rule holds. |
-| 12 | Byte comparison of the built fixture, and the `svg-document` validation and serialization tests | The source ships unchanged. |
+| 12 | Embedding, validation, and serialization unit tests, and decoding the built fixture's `href` | The source ships unchanged and only inside the scene. |
 | 13 | `make test-runtime` DOM check and close-zoom board-unit regression | The image stays in board units. |
 | 14 | `make evaluate` on the SVG fixture and `evaluation.json` inspection | The SVG reference is used and recorded. |
 

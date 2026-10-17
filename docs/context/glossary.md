@@ -20,7 +20,7 @@ An SVG whose references all point inside the file, as `#fragment` targets or `da
 
 ## SVG Document Node
 
-A scene node that draws a self-contained SVG file unchanged, with an SVG `<image>` element placed over a board rectangle in board units. An SVG source produces one node covering the board.
+A scene node that draws a self-contained SVG, embedded unchanged as a `data:` URI, with an SVG `<image>` element placed over a board rectangle in board units. An SVG source produces one node covering the board.
 
 ## Image XObject
 

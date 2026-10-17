@@ -79,7 +79,7 @@ Separate checkout and output roots prevent a factory fixture from contaminating 
 flowchart LR
   Discover[discoverSingleSource] --> Kind{Extension}
   Kind -->|.pdf| Pdf[Factory.Pdf<br/>parse, trace, and extract]
-  Kind -->|.svg| Svg[Factory.Svg<br/>validate and copy unchanged]
+  Kind -->|.svg| Svg[Factory.Svg<br/>validate and embed unchanged]
   Pdf --> Raw[Scene Unvalidated]
   Svg --> Raw
   Raw --> Validate[validateScene] --> Emit[Static JavaScript scene and assets] --> Browser[Viewer]
@@ -87,7 +87,7 @@ flowchart LR
   Svg -. evaluation .-> Direct[Chromium SVG reference<br/>outside the viewer]
 ```
 
-`Factory.Pipeline` is the only module that branches on the source format: `loadSource` reads the source, and `evaluationReference` selects its oracle. An SVG source becomes one SVG document node covering the board and the file `assets/board.svg`, which is byte-identical to the source. The viewer draws it as an isolated SVG image in board units. [ADR 0017](/adr/0017-isolated-svg-source-images.md) owns this design, and the [SVG support profile](/svg-support.md) owns accepted content. Everything after `validateScene` is shared by both formats.
+`Factory.Pipeline` is the only module that branches on the source format: `loadSource` reads the source, and `evaluationReference` selects its oracle. An SVG source becomes one SVG document node covering the board, whose `href` embeds the exact source bytes as a base64 `data:` URI; the site publishes no standalone SVG file. The viewer draws it as an isolated SVG image in board units. [ADR 0017](/adr/0017-isolated-svg-source-images.md) owns this design, and the [SVG support profile](/svg-support.md) owns accepted content. Everything after `validateScene` is shared by both formats.
 
 ## PDF Data Flow
 
@@ -171,7 +171,7 @@ For a PDF source, the deployed product receives only the validated scene and its
 | `Factory.Interpreter` | PDF operator state machine and scene-node emission, including paired vector and residual raster nodes | None |
 | `Factory.Vectorize` | Image classification, highlighter opacity profiling, traceable-component partitioning, quantization, contour tracing, supersampled thin-stroke tracing, sub-pixel stroke reconstruction, and simplification | None |
 | `Factory.Pdf` | PDF objects, streams, resources, annotations, structural URL classification, and raster and residual materialization | File input and asset output |
-| `Factory.Svg` | SVG parsing, board-size interpretation, self-containment validation, and byte-identical board copy | File input and asset output |
+| `Factory.Svg` | SVG parsing, board-size interpretation, self-containment validation, and `data:` URI embedding | File input |
 | `Factory.Site` | Scene validation and deterministic site emission | Template and site output |
 | `Factory.Evaluation` | Poppler and Chromium reference rendering, Chromium site capture, bounded capture planning, image stitching, metrics, and reports | Processes and report output |
 | `Factory.Pipeline` | CLI dispatch, source discovery and format dispatch, protected paths, staging, and promotion | Filesystem orchestration |
@@ -192,7 +192,7 @@ For a PDF source, the deployed product receives only the validated scene and its
 
 [ADR 0015](/adr/0015-viewport-sized-svg.md) moves the visual SVG out of the CSS-transformed HTML board. One camera update sets the viewport-sized SVG's coordinate window and the HTML overlay transform. The SVG owns the white source-board rectangle and ordered visuals; the HTML board owns text, links, and activated embeds. `site/styles.css` bounds the SVG to the viewport. [BDR 0022](/bdr/0022-bounded-zoom-rendering.md) defines the browser checks. The PR-only `visual-explanations/0022-bounded-zoom-rendering.svg` shows this control flow.
 
-[ADR 0017](/adr/0017-isolated-svg-source-images.md) adds SVG sources. `Factory.Pipeline` dispatches by format, `Factory.Svg` validates and copies the file, `Factory.Domain` adds the SVG document node, and `site/runtime.js` draws it. `Factory.Evaluation` takes a reference, either Poppler or a Chromium reference page that draws the source SVG as an isolated image outside the viewer, and shares tiled capture between that page and the site. [BDR 0024](/bdr/0024-pdf-and-svg-build-contract.md) defines the behavior. The PR-only `visual-explanations/0024-pdf-and-svg-sources.svg` shows this data flow.
+[ADR 0017](/adr/0017-isolated-svg-source-images.md) adds SVG sources. `Factory.Pipeline` dispatches by format, `Factory.Svg` validates and embeds the file, `Factory.Domain` adds the SVG document node, and `site/runtime.js` draws it. `Factory.Evaluation` takes a reference, either Poppler or a Chromium reference page that draws the source SVG as an isolated image outside the viewer, and shares tiled capture between that page and the site. [BDR 0024](/bdr/0024-pdf-and-svg-build-contract.md) defines the behavior. The PR-only `visual-explanations/0024-pdf-and-svg-sources.svg` shows this data flow.
 
 [ADR 0016](/adr/0016-board-point-vector-artwork.md) moves image presentation and vector artwork placement from the browser into the generator. `Factory.Vectorize` returns image-space contours, `Factory.Interpreter` places them with the `Factory.Geometry` presentation matrix it also gives raster images, `validateScene` checks the placed paths, and `Factory.Domain` serializes board-point path data; `site/runtime.js` applies raster matrices unchanged. [BDR 0023](/bdr/0023-webkit-close-zoom-visibility.md) owns the resulting WebKit close-zoom contract. The PR-only `visual-explanations/0023-board-point-artwork.svg` shows this data flow.
 
@@ -202,7 +202,7 @@ For a PDF source, the deployed product receives only the validated scene and its
 - The dependency solver, GHC, Cabal, and third-party actions are pinned.
 - Poppler and Chrome revisions can change antialiasing, so fixed tolerances replace exact pixel equality.
 - Browser evaluation tiles depend only on output dimensions and fixed `8192`-pixel horizontal and `4096`-pixel vertical boundaries; tile files are removed after stitching.
-- `site-title`, the optional `source-directory`, `github-pages`, `pdf-site-evaluation`, and generated filenames, including `assets/board.svg` for SVG sources, are public contracts. `build-pdf-site.yml` and `pdf-site-evaluation` keep names chosen before SVG sources existed.
+- `site-title`, the optional `source-directory`, `github-pages`, `pdf-site-evaluation`, and generated filenames are public contracts. `build-pdf-site.yml` and `pdf-site-evaluation` keep names chosen before SVG sources existed.
 - A moving `main` reference intentionally updates consumers on their next run; factory CI exercises the actual reusable workflow before merge.
 
 [ADR 0001](/adr/0001-vector-first-mixed-rendering.md) owns mixed rendering. [ADR 0002](/adr/0002-separate-factory-and-consumers.md) owns repository boundaries. [ADR 0003](/adr/0003-build-artifacts-with-a-reusable-workflow.md) owns workflow and deployment responsibilities. [ADR 0004](/adr/0004-linked-game-cards.md) owns measured mask and game-link trust boundaries. [ADR 0006](/adr/0006-tile-oversized-browser-evaluations.md) owns bounded evaluation capture, [ADR 0009](/adr/0009-opaque-highlighter-strokes.md) owns the low-alpha highlighter exception, [ADR 0012](/adr/0012-component-raster-residual.md) owns the traced-artwork raster residual, [ADR 0013](/adr/0013-supersampled-thin-stroke-tracing.md) owns supersampled thin-stroke tracing, and [ADR 0014](/adr/0014-reconstruct-sub-pixel-pen-strokes.md) owns sub-pixel stroke reconstruction, and [ADR 0017](/adr/0017-isolated-svg-source-images.md) owns SVG sources. [BDR 0024](/bdr/0024-pdf-and-svg-build-contract.md), [BDR 0006](/bdr/0006-expanded-freeform-graphics-output.md), [BDR 0007](/bdr/0007-tiled-visual-evaluation.md), [BDR 0008](/bdr/0008-fixed-light-viewer.md), [BDR 0011](/bdr/0011-opaque-highlighter-output.md), [BDR 0013](/bdr/0013-remove-topic-navigation.md), [BDR 0017](/bdr/0017-preserve-local-traced-detail.md), and [BDR 0021](/bdr/0021-reconstructed-sub-pixel-strokes.md) own current observable behavior.

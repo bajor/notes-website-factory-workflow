@@ -85,11 +85,11 @@ The reusable workflow does not deploy either artifact. If evaluation fails, it w
 
 The reference render is Poppler's rendering of a PDF, or Chromium's rendering of an SVG as an isolated image outside the viewer. The evaluation report names the reference and includes sampled 4× and 8× detail comparisons for visual inspection alongside the fixed whole-board checks. See the [zoom-detail contract](docs/bdr/0018-zoom-detail-evidence.md) for selection and evidence filenames.
 
-The site includes `index.html`, `runtime.js`, `styles.css`, `scene.generated.js`, and `scene-summary.json`. An `assets/` directory is added when a PDF board contains raster assets, and for an SVG source it holds the unchanged `assets/board.svg`. The viewer keeps direct wheel, pinch, drag, and keyboard navigation; its visible control is `Fit`. In PDF boards, YouTube links activate privacy-enhanced embeds, and supported Algo Arcade game links open in a new tab with an accessible gamepad affordance.
+The site includes `index.html`, `runtime.js`, `styles.css`, `scene.generated.js`, and `scene-summary.json`. An `assets/` directory is added only when a PDF board contains raster assets. An SVG source is embedded unchanged in `scene.generated.js` as a `data:` URI, so the site never publishes it as a standalone file. The viewer keeps direct wheel, pinch, drag, and keyboard navigation; its visible control is `Fit`. In PDF boards, YouTube links activate privacy-enhanced embeds, and supported Algo Arcade game links open in a new tab with an accessible gamepad affordance.
 
 The PDF parser intentionally supports only the observed Apple Freeform subset: unrotated zero-origin pages; JPEG and 8-bit Flate images; affine image transforms; clipping and native paths; common device and named one/three-component ICC-based colors; stroke miter and dash state under non-singular similarity transforms; Freeform opacity resources; and HTTP or HTTPS URI annotations. Unsupported structures, including PDF text, fail explicitly.
 
-An SVG source must be well-formed XML with an `svg` root in the SVG namespace, and its references must be `#fragment` targets or `data:` URIs. Scripts, event handlers, hyperlinks, `foreignObject`, external resources, and stylesheet imports fail explicitly.
+An SVG source must be well-formed XML with an `svg` root in the SVG namespace, and its references must be `#fragment` targets or `data:` URIs. Scripts, event handlers, hyperlinks, `foreignObject`, XHTML content, external resources, and stylesheet imports fail explicitly.
 
 ## Local Use
 

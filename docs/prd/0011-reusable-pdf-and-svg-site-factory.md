@@ -36,7 +36,7 @@ timestamp: 2026-10-17
 1. The searched consumer directory contains exactly one non-symlink `.pdf` or `.svg` file. A PDF has exactly one page.
 2. `site-title` is the only required workflow input. The optional `source-directory` input selects a directory inside the consumer checkout and defaults to the repository root.
 3. A PDF source follows the PDF support profile and its accepted behavior decisions.
-4. An SVG source ships byte for byte and is drawn as an isolated image in board units. Content that the image would drop without an error fails the build, as the [SVG support profile](/svg-support.md) lists.
+4. An SVG source ships byte for byte, embedded in the scene rather than as a standalone file, and is drawn as an isolated image in board units. Content that the image would drop without an error fails the build, as the [SVG support profile](/svg-support.md) lists.
 5. The workflow checks out the consumer and the exact called-workflow commit into separate directories.
 6. The workflow uploads `github-pages` only after build and evaluation pass, and uploads available evidence as `pdf-site-evaluation` for either format.
 7. The factory contains no production source document and no consumer-specific filename, dimension, count, resource name, repository name, or URL.

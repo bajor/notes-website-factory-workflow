@@ -24,7 +24,7 @@ Every concept has one canonical home and remains reachable from `docs/index.md`.
 - Keep production parsing in Haskell: `pdf-toolbox` for PDF and `xml-conduit` for SVG, with project-owned interpretation and validation.
 - Preserve source content without inventing text or geometry. Never turn unsupported PDF text into DOM text.
 - Keep the generated product independent of the source PDF, full-page PDF rasters, browser PDF parsers, Canvas fallbacks, and a backend.
-- Ship an SVG source byte for byte as an isolated image. Never inline it into the page DOM, rewrite it, or strip content from it.
+- Ship an SVG source byte for byte as an isolated image, embedded in the scene as a `data:` URI. Never publish it as a standalone file, inline it into the page DOM, rewrite it, or strip content from it.
 - Fail when observed content cannot be represented safely; do not silently omit it or weaken validation.
 - Keep consumer input, the factory checkout, site output, and evaluation evidence in separate roots. Templates remain factory-owned and protected from removable paths.
 - Never allow a removable output, staging, backup, scratch, or report path to overlap a protected root or another independently owned output root.
