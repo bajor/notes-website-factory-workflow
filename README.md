@@ -5,7 +5,7 @@ Notes Website Factory turns one board document, a one-page PDF or a self-contain
 The two formats take different paths through the generator:
 
 - **PDF:** the generator parses the page into scene data, inline SVG artwork, links, and extracted raster assets. The site does not ship or parse the PDF in the browser. The parser supports the subset observed in Apple Freeform exports; see the [PDF support profile](docs/pdf-investigation.md).
-- **SVG:** the generator validates the file and ships it unchanged. The viewer draws it as an isolated image, so scripts, hyperlinks, and external files cannot work there, and the build rejects them. See the [SVG support profile](docs/svg-support.md).
+- **SVG:** the generator validates the file and ships it unchanged. The viewer draws it as an isolated image, so scripts, hyperlinks, and external files cannot work there, and the build rejects them. The target exporter is [Ahmni: Infinite Canvas](https://apps.apple.com/us/app/ahmni-infinite-canvas/id6468889981) for iPad, which exports a canvas as an SVG since version 1.39.0; no Ahmni export has been validated yet. See the [SVG support profile](docs/svg-support.md).
 
 The factory is not a general-purpose PDF converter, SVG sanitizer, editor, or OCR tool.
 
@@ -70,7 +70,7 @@ The workflow file keeps its original `build-pdf-site.yml` name and builds both f
 | `site-title` | Yes | None | Browser title and accessible name of the board. |
 | `source-directory` | No | `.` | Consumer-relative directory searched for the source document. It must resolve inside the repository; otherwise the build fails before it starts. |
 
-To switch a consumer from PDF to SVG, replace the PDF with the exported SVG. The caller workflow does not change.
+To switch a consumer from an Apple Freeform PDF to an Ahmni board, export the canvas from Ahmni as an SVG (version 1.39.0 or later) and replace the PDF with it. The caller workflow does not change. If the build fails, its error names the unsupported content; the [SVG support profile](docs/svg-support.md) explains how Ahmni links, images, and PDF excerpts affect the result.
 
 ## Outputs
 

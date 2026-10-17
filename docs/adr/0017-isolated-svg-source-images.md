@@ -9,7 +9,7 @@ timestamp: 2026-10-17
 
 ## Context
 
-[PRD 0011](/prd/0011-reusable-pdf-and-svg-site-factory.md) adds SVG source documents. A PDF needs a parser, tracing, and raster extraction because the browser cannot show it directly. An SVG is already the format the viewer draws. The open questions were how to show it, how to keep it from affecting the page, what to validate, how to evaluate it, and how factory CI exercises two formats.
+[PRD 0011](/prd/0011-reusable-pdf-and-svg-site-factory.md) adds SVG source documents, targeting canvases exported from Ahmni: Infinite Canvas. A PDF needs a parser, tracing, and raster extraction because the browser cannot show it directly. An SVG is already the format the viewer draws. The open questions were how to show it, how to keep it from affecting the page, what to validate, how to evaluate it, and how factory CI exercises two formats.
 
 A Chromium probe showed that an SVG drawn by an SVG `<image>` element inside a zoomed viewport `viewBox` stays sharp vector output at the viewer's 16× maximum zoom.
 

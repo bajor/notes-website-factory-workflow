@@ -8,7 +8,7 @@ timestamp: 2026-10-17
 
 ## Source Document
 
-The one consumer file a site is built from: a one-page PDF or a self-contained SVG. Discovery recognizes it by its `.pdf` or `.svg` extension, ignoring case.
+The one consumer file a site is built from: a one-page PDF, such as an Apple Freeform export, or a self-contained SVG, such as an Ahmni canvas export. Discovery recognizes it by its `.pdf` or `.svg` extension, ignoring case.
 
 ## Source Directory
 

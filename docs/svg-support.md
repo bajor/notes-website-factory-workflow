@@ -8,7 +8,17 @@ timestamp: 2026-10-17
 
 An SVG source is a consumer's one board exported as a single `.svg` file. The factory validates the file and embeds its exact bytes in the scene as a base64 `data:` URI, and the viewer draws it as an isolated SVG image over the board. [ADR 0017](/adr/0017-isolated-svg-source-images.md) records the design, and [BDR 0024](/bdr/0024-pdf-and-svg-build-contract.md) owns the observable contract.
 
-No production SVG export has been observed yet. This profile follows the rules browsers apply to SVG images. [Issue 0020](/issues/0020-support-svg-sources.md) tracks validation of the first real export.
+## Target Exporter
+
+The SVG path targets [Ahmni: Infinite Canvas](https://apps.apple.com/us/app/ahmni-infinite-canvas/id6468889981), an iPad note and mind-map app whose App Store version history adds "Export a canvas as an SVG" in version 1.39.0. No Ahmni export has been observed yet, so this profile follows the rules browsers apply to SVG images, and the factory has no Ahmni-specific behavior. [Issue 0020](/issues/0020-support-svg-sources.md) tracks validation of the first real export.
+
+How Ahmni writes some canvas content into its SVG decides the result:
+
+| Ahmni content | Builds when the SVG contains | Fails when the SVG contains |
+| --- | --- | --- |
+| Handwriting, shapes, and text | Paths, shapes, and text | Not expected to fail |
+| Images and PDF excerpts | Images embedded as `data:` URIs | References to separate image files |
+| Links to canvases, bookmarks, or URLs, available since version 1.32.0 | No link elements | `a` hyperlinks |
 
 ## Board Size
 
@@ -63,7 +73,7 @@ The factory ships the SVG unchanged, so this oracle checks what the factory adds
 
 ## Limitations
 
-- Hyperlinks fail instead of becoming link overlays. Support needs a real export that shows how links are encoded.
+- Hyperlinks, including Ahmni canvas links if its export writes them as `a` elements, fail instead of becoming link overlays. Support needs a real export that shows how links are encoded.
 - Text renders with the fonts available on the visitor's device unless the SVG embeds them as `data:` URIs.
 - `data:` URIs that contain another SVG are not inspected for external references.
 - References set by SVG animation values, such as `<set attributeName="href">`, are not inspected.

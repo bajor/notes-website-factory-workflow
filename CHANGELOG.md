@@ -4,7 +4,7 @@
 
 ### Added
 
-- Build a site from one self-contained SVG. The factory validates the file and ships it unchanged, and the viewer draws it as sharp, zoomable vector content.
+- Build a site from one self-contained SVG, intended for canvases exported from Ahmni: Infinite Canvas. The factory validates the file and ships it unchanged, and the viewer draws it as sharp, zoomable vector content.
 - Add the optional `source-directory` workflow input, which selects the consumer directory searched for the source document.
 
 ### Fixed

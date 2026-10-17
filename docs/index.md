@@ -6,7 +6,7 @@ okf_version: "0.1"
 - [Constitution](/constitution.md): foundational scope, ownership, and quality constraints.
 - [Architecture](/architecture.md): repository ownership, workflow sequence, modules, and safety.
 - [PDF support profile](/pdf-investigation.md): Apple Freeform evidence, supported PDF behavior, and parser limitations.
-- [SVG support profile](/svg-support.md): accepted and rejected SVG content, board size, rendering, and evaluation.
+- [SVG support profile](/svg-support.md): Ahmni as the target exporter, accepted and rejected SVG content, board size, rendering, and evaluation.
 - [Product requirements](/prd/index.md): accepted product requirements.
 - [Architecture decisions](/adr/index.md): confirmed structural decisions.
 - [Behavior decisions](/bdr/index.md): observable contracts and test design.

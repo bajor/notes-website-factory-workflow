@@ -10,7 +10,7 @@ timestamp: 2026-10-17
 
 ## Problem
 
-[PRD 0002](/prd/0002-reusable-freeform-site-factory.md) accepts exactly one one-page Apple Freeform PDF. The owner is moving to a note application that exports SVG. An SVG already holds the board as browser-native vector content, so tracing or reinterpreting it would add loss and code without benefit. The factory, its workflow, and its documentation describe only the Freeform PDF case.
+[PRD 0002](/prd/0002-reusable-freeform-site-factory.md) accepts exactly one one-page Apple Freeform PDF. The owner is moving to Ahmni: Infinite Canvas, an iPad note application that exports a canvas as an SVG. An SVG already holds the board as browser-native vector content, so tracing or reinterpreting it would add loss and code without benefit. The factory, its workflow, and its documentation describe only the Freeform PDF case.
 
 ## Goals
 
@@ -26,6 +26,7 @@ timestamp: 2026-10-17
 - General PDF compatibility outside the PDF support profile.
 - SVG sanitization: content that an isolated image would lose fails instead of being removed.
 - SVG hyperlinks, scripts, and external resources.
+- Exporter-specific SVG behavior, including for Ahmni, before a real export has been observed.
 - Multi-page or multi-file boards.
 - Consumer-owned HTML, CSS, JavaScript, themes, or evaluation thresholds.
 - Deployment from the reusable workflow.
