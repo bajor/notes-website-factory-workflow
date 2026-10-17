@@ -77,6 +77,7 @@ async function buildScene() {
     if (node.kind === 'path') addPath(node);
     if (node.kind === 'text') addText(node);
     if (node.kind === 'link') addLink(node);
+    if (node.kind === 'svg-document') imageLoads.push(addSvgDocument(node));
   }
 
   await Promise.all(imageLoads);
@@ -97,12 +98,31 @@ function addImage(node, assets) {
   image.setAttribute('opacity', node.opacity);
   image.setAttribute('preserveAspectRatio', 'none');
   image.setAttribute('transform', cssMatrix(node.matrix));
+  const loaded = loadImage(image, asset.file);
+  appendVisual(image, node.clips);
+  return loaded;
+}
+
+// The browser draws the SVG as an isolated image: its scripts, styles, and
+// identifiers cannot reach the page. Board-unit geometry needs no transform.
+function addSvgDocument(node) {
+  const image = createSvgElement('image');
+  image.classList.add('scene-svg-document');
+  image.setAttribute('x', node.bounds.x);
+  image.setAttribute('y', node.bounds.y);
+  image.setAttribute('width', node.bounds.width);
+  image.setAttribute('height', node.bounds.height);
+  const loaded = loadImage(image, node.file);
+  appendVisual(image, []);
+  return loaded;
+}
+
+function loadImage(image, file) {
   const loaded = new Promise((resolve, reject) => {
     image.addEventListener('load', resolve, { once: true });
-    image.addEventListener('error', () => reject(new Error(`Could not load ${asset.file}`)), { once: true });
+    image.addEventListener('error', () => reject(new Error(`Could not load ${file}`)), { once: true });
   });
-  image.setAttribute('href', asset.file);
-  appendVisual(image, node.clips);
+  image.setAttribute('href', file);
   return loaded;
 }
 

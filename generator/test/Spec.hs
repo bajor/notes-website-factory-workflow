@@ -4,22 +4,24 @@
 module Main (main) where
 
 import Codec.Picture (Image, PixelRGB8 (PixelRGB8), PixelRGBA8 (PixelRGBA8), generateImage, pixelAt)
-import Data.Aeson (Value (Object, String), toJSON)
+import Data.Aeson (Value (Object, String), object, toJSON, (.=))
 import Data.List (isSuffixOf)
 import Data.Word (Word8)
 import Factory.Domain
 import Factory.Evaluation (CaptureTile (CaptureTile), EvaluationResult (evaluationPassed), bodyIsReady, calculateDifference, captureTiles, selectDetailRegions, stitchTiles)
 import Factory.Geometry (boardMatrix, identityMatrix, imagePresentationMatrix, multiplyMatrix, placeVectorPath)
 import Factory.Interpreter (ColorSpaceResource (SupportedColorSpace, UnsupportedColorSpace), Resources (Resources), VisualResource (MixedResource, RasterResource, VectorResource), interpretOperators)
-import Factory.Pipeline (outputCompanionPaths, validateOutputPath)
+import Factory.Pipeline (outputCompanionPaths, sourceAt, validateOutputPath)
 import Factory.Pdf (classifyUrl, rejectDecode, rgbaImage)
 import Factory.Site (renderIndexTemplate, validateScene)
+import Factory.Svg (SvgBoard (SvgBoard), interpretSvg, svgScene)
 import Factory.Vectorize (ArtworkPartition (..), ImageDisposition (..), classifyImage, opaqueHighlighter, partitionArtwork, traceImage, traceReconstructedImage, traceSmoothImage)
 import Pdf.Content (Op (..), Operator)
 import Pdf.Core (Object (Array, Name, Number))
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
 import qualified Data.ByteString as ByteString
+import qualified Data.ByteString.Lazy.Char8 as LazyChar8
 import qualified Data.Aeson.KeyMap as KeyMap
 import qualified Data.Map.Strict as Map
 import qualified Data.Scientific as Scientific
@@ -38,6 +40,7 @@ tests =
     , imageTests
     , vectorizationTests
     , linkTests
+    , svgTests
     , validationTests
     , siteTests
     , evaluationTests
@@ -354,6 +357,60 @@ linkTests =
           result -> assertFailure ("unexpected trace result: " <> show result)
     ]
 
+svgTests :: TestTree
+svgTests =
+  testGroup
+    "SVG sources"
+    [ testCase "absolute root lengths convert to CSS pixels" $
+        interpretSvg (svgDocument "width=\"72pt\" height=\"1in\"" "") @?= Right (SvgBoard 96 96)
+    , testCase "percentage and missing root lengths use the viewBox size" $
+        interpretSvg (svgDocument "width=\"100%\" viewBox=\"0 0 640,480\"" "") @?= Right (SvgBoard 640 480)
+    , testCase "a single absolute root length is rejected" $
+        interpretSvg (svgDocument "width=\"640\" viewBox=\"0 0 640 480\"" "")
+          @?= Left (InvalidSvg "width and height must both be absolute lengths, or neither")
+    , testCase "a root outside the SVG namespace is rejected" $
+        interpretSvg "<svg width=\"10\" height=\"10\"/>" @?= Left (InvalidSvg "the root element must be svg in the SVG namespace")
+    , testCase "malformed XML is rejected" $
+        case interpretSvg "<svg xmlns=\"http://www.w3.org/2000/svg\">" of
+          Left (InvalidSvg _) -> pure ()
+          result -> assertFailure ("unexpected SVG result: " <> show result)
+    , testCase "scripts are rejected" $
+        interpretSvg (sizedSvg "<script>run()</script>") @?= Left (UnsupportedSvg "SVG scripts are not supported")
+    , testCase "event handler attributes are rejected" $
+        interpretSvg (sizedSvg "<rect width=\"1\" height=\"1\" onclick=\"run()\"/>") @?= Left (UnsupportedSvg "SVG event handler attributes are not supported")
+    , testCase "hyperlinks are rejected" $
+        interpretSvg (sizedSvg "<a href=\"https://example.com\"><rect width=\"1\" height=\"1\"/></a>") @?= Left (UnsupportedSvg "SVG hyperlinks are not supported")
+    , testCase "foreignObject content is rejected" $
+        interpretSvg (sizedSvg "<foreignObject width=\"1\" height=\"1\"/>") @?= Left (UnsupportedSvg "SVG foreignObject content is not supported")
+    , testCase "external resource references are rejected" $
+        interpretSvg (sizedSvg "<image width=\"1\" height=\"1\" href=\"photo.png\"/>") @?= Left (UnsupportedSvg "SVG references an external resource: photo.png")
+    , testCase "external CSS URLs in attributes are rejected" $
+        interpretSvg (sizedSvg "<rect width=\"1\" height=\"1\" fill=\"URL( 'paint.svg#p' )\"/>") @?= Left (UnsupportedSvg "SVG references an external resource: paint.svg#p")
+    , testCase "external CSS URLs in style elements are rejected" $
+        interpretSvg (sizedSvg "<style>@font-face { src: url(https://example.com/a.woff2) }</style>")
+          @?= Left (UnsupportedSvg "SVG references an external resource: https://example.com/a.woff2")
+    , testCase "stylesheet imports are rejected" $
+        interpretSvg (sizedSvg "<style>@import 'theme.css';</style>") @?= Left (UnsupportedSvg "SVG stylesheets must not import other stylesheets")
+    , testCase "external stylesheet instructions are rejected" $
+        interpretSvg ("<?xml-stylesheet href=\"theme.css\"?>" <> sizedSvg "") @?= Left (UnsupportedSvg "external SVG stylesheets are not supported")
+    , testCase "fragment and data references are accepted" $
+        interpretSvg (sizedSvg "<defs><linearGradient id=\"g\"/><rect id=\"r\" width=\"1\" height=\"1\"/></defs><use xlink:href=\"#r\" fill=\"url(#g)\"/><image width=\"1\" height=\"1\" href=\"DATA:image/png;base64,AAAA\"/>")
+          @?= Right (SvgBoard 10 10)
+    , testCase "an SVG board is a valid scene of one document node" $
+        fmap sceneNodes (validateScene (svgScene (SvgBoard 640 480))) @?= Right [SvgDocumentNode "assets/board.svg" (Rect 0 0 640 480)]
+    , testCase "SVG documents serialize their file and board bounds" $
+        toJSON (SvgDocumentNode "assets/board.svg" (Rect 0 0 640 480))
+          @?= object
+            [ "kind" .= ("svg-document" :: Text.Text)
+            , "file" .= ("assets/board.svg" :: Text.Text)
+            , "bounds" .= object ["x" .= (0 :: Double), "y" .= (0 :: Double), "width" .= (640 :: Double), "height" .= (480 :: Double)]
+            ]
+    ]
+  where
+    sizedSvg = svgDocument "width=\"10\" height=\"10\""
+    svgDocument rootAttributes content =
+      LazyChar8.pack ("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" " <> rootAttributes <> ">" <> content <> "</svg>")
+
 validationTests :: TestTree
 validationTests =
   testGroup
@@ -480,6 +537,9 @@ pipelineTests =
     , testCase "a sibling output directory is accepted" $
         validateOutputPath "/workspace/repository" "/workspace/dist"
           @?= Right ()
+    , testCase "sources are classified by case-insensitive extension" $
+        map sourceAt ["notes/Board.SVG", "notes/board.pdf", "notes/board.png"]
+          @?= [Just (SvgSource "notes/Board.SVG"), Just (PdfSource "notes/board.pdf"), Nothing]
     , testCase "trailing separators do not put staging inside the output" $
         outputCompanionPaths "/workspace/repository/dist/"
           @?= ("/workspace/repository/dist", "/workspace/repository/dist.building", "/workspace/repository/dist.previous")

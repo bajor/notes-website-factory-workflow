@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="480pt" height="320pt" viewBox="0 0 640 426.667">
+  <defs>
+    <linearGradient id="band" x1="0" x2="1">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#16a34a"/>
+    </linearGradient>
+    <path id="tick" d="M0 10l8 8 16-20" fill="none" stroke="#111" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <style>.label { font: 600 28px sans-serif; fill: #111; }</style>
+  </defs>
+  <rect x="32" y="32" width="576" height="362.667" rx="24" fill="none" stroke="#111" stroke-width="3"/>
+  <rect x="64" y="80" width="512" height="40" fill="url(#band)"/>
+  <text class="label" x="64" y="176">SVG fixture</text>
+  <use href="#tick" x="64" y="220"/>
+  <use xlink:href="#tick" x="112" y="220"/>
+  <path d="M64 320C160 260 240 380 336 320S512 260 576 320" fill="none" stroke="#111" stroke-width="2"/>
+  <image x="448" y="160" width="128" height="128" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAGElEQVR42mP4esH2pps2hGSAs4AkA04ZALlCGmHqVMxZAAAAAElFTkSuQmCC"/>
+</svg>

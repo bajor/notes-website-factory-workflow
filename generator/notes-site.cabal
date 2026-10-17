@@ -12,6 +12,7 @@ library
     , Factory.Pdf
     , Factory.Pipeline
     , Factory.Site
+    , Factory.Svg
     , Factory.Vectorize
   hs-source-dirs:   src
   default-language: GHC2021
@@ -42,6 +43,7 @@ library
     , text
     , unordered-containers
     , vector
+    , xml-conduit
 
 executable notes-site
   main-is:          Main.hs

@@ -7,9 +7,10 @@
 -- parser, interpreter, and validator receive explicit values, so tests can
 -- run them without hidden filesystem access.
 module Factory.Pipeline
-  ( discoverSinglePdf
+  ( discoverSingleSource
   , outputCompanionPaths
   , runCommand
+  , sourceAt
   , validateOutputPath
   ) where
 
@@ -18,9 +19,10 @@ import Control.Monad (forM, when)
 import Data.List (sort)
 import Data.Text (Text)
 import Factory.Domain
-import Factory.Evaluation (EvaluationResult (..), runVisualEvaluation)
+import Factory.Evaluation (EvaluationResult (..), Reference (..), runVisualEvaluation)
 import Factory.Pdf (ParsedPdf (..), PdfSummary (..), parsePdf)
 import Factory.Site (validateScene, writeSite)
+import Factory.Svg (SvgBoard (..), loadSvg, readSvgBoard, svgScene)
 import System.Directory
   ( canonicalizePath
   , createDirectoryIfMissing
@@ -54,13 +56,35 @@ runCommand = do
     Left buildError -> Text.putStrLn ("ERROR: " <> renderError buildError) >> exitFailure
     Right message -> Text.putStrLn message
 
-discoverSinglePdf :: FilePath -> IO (Either BuildError FilePath)
-discoverSinglePdf repositoryRoot = do
-  result <- try (collectPdfs repositoryRoot)
+discoverSingleSource :: FilePath -> IO (Either BuildError Source)
+discoverSingleSource sourceRoot = do
+  result <- try (collectSources sourceRoot)
   pure $ case result of
     Left exception -> Left (IoError (Text.pack (show (exception :: IOException))))
-    Right [pdf] -> Right pdf
-    Right pdfs -> Left (PdfCountError (length pdfs))
+    Right [source] -> Right source
+    Right sources -> Left (SourceCountError (length sources))
+
+sourceAt :: FilePath -> Maybe Source
+sourceAt path = case map asciiLower (takeExtension path) of
+  ".pdf" -> Just (PdfSource path)
+  ".svg" -> Just (SvgSource path)
+  _ -> Nothing
+
+sourcePath :: Source -> FilePath
+sourcePath source = case source of
+  PdfSource path -> path
+  SvgSource path -> path
+
+-- | Read the source into an unvalidated scene and a summary, writing its assets.
+loadSource :: Source -> FilePath -> IO (Either BuildError (Scene 'Unvalidated, Text))
+loadSource source assetDirectory = case source of
+  PdfSource pdf -> fmap (\parsed -> (parsedScene parsed, pdfSummaryText pdf (parsedSummary parsed))) <$> parsePdf pdf assetDirectory
+  SvgSource svg -> fmap (\board -> (svgScene board, svgSummaryText svg board)) <$> loadSvg svg assetDirectory
+
+evaluationReference :: Source -> IO (Either BuildError Reference)
+evaluationReference source = case source of
+  PdfSource pdf -> pure (Right (PopplerReference pdf))
+  SvgSource svg -> fmap (\(SvgBoard width height) -> BrowserReference svg width height) <$> readSvgBoard svg
 
 inspectRepository :: FilePath -> FilePath -> IO (Either BuildError Text)
 inspectRepository sourceRoot workDirectory = do
@@ -68,13 +92,11 @@ inspectRepository sourceRoot workDirectory = do
   preparedScratch <- prepareRemovalPath (workDirectory </> "inspect-assets")
   case preparedScratch >>= validatePreparedPath [absoluteSource] of
     Left buildError -> pure (Left buildError)
-    Right scratch -> withSinglePdf absoluteSource $ \pdf -> do
+    Right scratch -> withSingleSource absoluteSource $ \source -> do
       resetDirectory scratch
-      parsed <- parsePdf pdf scratch
+      loaded <- loadSource source scratch
       removePathForcibly scratch
-      case parsed of
-        Left buildError -> pure (Left buildError)
-        Right result -> pure (Right (summaryText pdf (parsedSummary result)))
+      pure (snd <$> loaded)
 
 buildRepository :: FilePath -> FilePath -> FilePath -> SiteTitle -> IO (Either BuildError Text)
 buildRepository sourceRoot templateDirectory outputDirectory title = do
@@ -90,19 +112,19 @@ buildRepository sourceRoot templateDirectory outputDirectory title = do
 
 buildToStaging :: FilePath -> FilePath -> FilePath -> FilePath -> FilePath -> SiteTitle -> IO (Either BuildError Text)
 buildToStaging absoluteSource absoluteTemplates absoluteOutput stagingDirectory backupDirectory title =
-  withSinglePdf absoluteSource $ \pdf -> do
+  withSingleSource absoluteSource $ \source -> do
     resetDirectory stagingDirectory
-    parsed <- parsePdf pdf (stagingDirectory </> "assets")
-    case parsed of
+    loaded <- loadSource source (stagingDirectory </> "assets")
+    case loaded of
       Left buildError -> removePathForcibly stagingDirectory >> pure (Left buildError)
-      Right result -> case validateScene (parsedScene result) of
+      Right (unvalidated, summary) -> case validateScene unvalidated of
         Left buildError -> removePathForcibly stagingDirectory >> pure (Left buildError)
         Right scene -> do
           writeSite absoluteTemplates stagingDirectory title scene
           promoted <- promoteDirectory stagingDirectory absoluteOutput backupDirectory
           pure $ case promoted of
             Left buildError -> Left buildError
-            Right () -> Right ("Built JavaScript scene from " <> Text.pack (takeFileName pdf) <> "\n" <> summaryText pdf (parsedSummary result))
+            Right () -> Right ("Built JavaScript scene from " <> Text.pack (takeFileName (sourcePath source)) <> "\n" <> summary)
 
 evaluateRepository :: FilePath -> FilePath -> FilePath -> FilePath -> SiteTitle -> IO (Either BuildError Text)
 evaluateRepository sourceRoot templateDirectory outputDirectory reportDirectory title = do
@@ -123,11 +145,12 @@ evaluateRepository sourceRoot templateDirectory outputDirectory reportDirectory 
             case built of
               Left buildError -> pure (Left buildError)
               Right _ -> do
-                discovered <- discoverSinglePdf absoluteSource
-                case discovered of
+                discovered <- discoverSingleSource absoluteSource
+                reference <- either (pure . Left) evaluationReference discovered
+                case reference of
                   Left buildError -> pure (Left buildError)
-                  Right pdf -> do
-                    evaluation <- runVisualEvaluation pdf absoluteOutput absoluteReport
+                  Right oracle -> do
+                    evaluation <- runVisualEvaluation oracle absoluteOutput absoluteReport
                     pure $ case evaluation of
                       Left buildError -> Left buildError
                       Right result
@@ -137,11 +160,11 @@ evaluateRepository sourceRoot templateDirectory outputDirectory reportDirectory 
 withSiteTitle :: String -> (SiteTitle -> IO (Either BuildError Text)) -> IO (Either BuildError Text)
 withSiteTitle rawTitle action = either (pure . Left) action (mkSiteTitle (Text.pack rawTitle))
 
-withSinglePdf :: FilePath -> (FilePath -> IO (Either BuildError Text)) -> IO (Either BuildError Text)
-withSinglePdf root action = discoverSinglePdf root >>= either (pure . Left) action
+withSingleSource :: FilePath -> (Source -> IO (Either BuildError Text)) -> IO (Either BuildError Text)
+withSingleSource root action = discoverSingleSource root >>= either (pure . Left) action
 
-collectPdfs :: FilePath -> IO [FilePath]
-collectPdfs directory = do
+collectSources :: FilePath -> IO [Source]
+collectSources directory = do
   entries <- sort <$> listDirectory directory
   fmap concat . forM entries $ \entry -> do
     let path = directory </> entry
@@ -149,8 +172,8 @@ collectPdfs directory = do
     isFile <- doesFileExist path
     isSymbolicLink <- pathIsSymbolicLink path
     if isDirectory && not isSymbolicLink && entry `notElem` ignoredDirectories
-      then collectPdfs path
-      else pure [path | isFile && not isSymbolicLink && map asciiLower (takeExtension entry) == ".pdf"]
+      then collectSources path
+      else pure [source | isFile && not isSymbolicLink, Just source <- [sourceAt path]]
 
 ignoredDirectories :: [FilePath]
 ignoredDirectories = [".git", "build", "dist", "dist.building", "dist.previous", "dist-newstyle", "node_modules"]
@@ -234,10 +257,11 @@ validateOutputPath protectedRoot outputDirectory
 validatePreparedPath :: [FilePath] -> FilePath -> Either BuildError FilePath
 validatePreparedPath protectedRoots path = path <$ traverse (`validateOutputPath` path) protectedRoots
 
-summaryText :: FilePath -> PdfSummary -> Text
-summaryText pdf summary =
+pdfSummaryText :: FilePath -> PdfSummary -> Text
+pdfSummaryText pdf summary =
   Text.unlines
     [ "File: " <> Text.pack (takeFileName pdf)
+    , "Format: PDF"
     , "Pages: " <> numberText (summaryPageCount summary)
     , "Board: " <> decimalText (summaryWidth summary) <> " x " <> decimalText (summaryHeight summary) <> " pt"
     , "Operators: " <> numberText (summaryOperatorCount summary)
@@ -247,9 +271,17 @@ summaryText pdf summary =
     , "Links: " <> numberText (summaryLinkCount summary)
     ]
 
+svgSummaryText :: FilePath -> SvgBoard -> Text
+svgSummaryText svg (SvgBoard width height) =
+  Text.unlines
+    [ "File: " <> Text.pack (takeFileName svg)
+    , "Format: SVG"
+    , "Board: " <> decimalText (unCoordinate width) <> " x " <> decimalText (unCoordinate height) <> " px"
+    ]
+
 renderError :: BuildError -> Text
 renderError buildError = case buildError of
-  PdfCountError count -> "expected exactly one PDF file, found " <> numberText count
+  SourceCountError count -> "expected exactly one PDF or SVG source file, found " <> numberText count
   PageCountError count -> "PDF must contain exactly one page, found " <> numberText count
   PdfStructureError message -> "invalid PDF structure: " <> message
   UnsupportedOperator message -> "unsupported PDF operator: " <> message
@@ -257,6 +289,8 @@ renderError buildError = case buildError of
   GraphicsStateError message -> "invalid PDF graphics state: " <> message
   InvalidScene message -> "invalid generated scene: " <> message
   InvalidUrl message -> "invalid PDF link: " <> message
+  InvalidSvg message -> "invalid SVG: " <> message
+  UnsupportedSvg message -> "unsupported SVG content: " <> message
   InvalidSiteTitle message -> "invalid site title: " <> message
   EvaluationError message -> "evaluation failed: " <> message
   IoError message -> message

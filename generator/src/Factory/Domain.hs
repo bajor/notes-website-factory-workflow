@@ -31,6 +31,7 @@ module Factory.Domain
   , Scene (..)
   , SceneNode (..)
   , SiteTitle
+  , Source (..)
   , TextRun (..)
   , Validation (..)
   , VectorContour (..)
@@ -164,6 +165,10 @@ mkSiteTitle rawTitle
 siteTitleText :: SiteTitle -> Text
 siteTitleText (SiteTitle title) = title
 
+-- | The one consumer file a site is built from, classified by its format.
+data Source = PdfSource FilePath | SvgSource FilePath
+  deriving stock (Eq, Show)
+
 data LinkTarget = YouTube VideoId | Game GameUrl | External WebUrl
   deriving stock (Eq, Show)
 
@@ -204,6 +209,8 @@ data SceneNode
   | PathNode [PathCommand] PaintStyle [ClipPath]
   | TextNode TextRun [ClipPath]
   | LinkNode LinkTarget (Rect BoardSpace)
+  | -- | A self-contained SVG file drawn unchanged, as an isolated image, over the given board rectangle.
+    SvgDocumentNode FilePath (Rect BoardSpace)
   deriving stock (Eq, Show)
 
 -- | The phase parameter makes unvalidated scenes unusable by the emitter.
@@ -219,7 +226,7 @@ sceneNodes :: Scene phase -> [SceneNode]
 sceneNodes = sceneContent
 
 data BuildError
-  = PdfCountError Int
+  = SourceCountError Int
   | PageCountError Int
   | PdfStructureError Text
   | UnsupportedOperator Text
@@ -227,6 +234,8 @@ data BuildError
   | GraphicsStateError Text
   | InvalidScene Text
   | InvalidUrl Text
+  | InvalidSvg Text
+  | UnsupportedSvg Text
   | InvalidSiteTitle Text
   | EvaluationError Text
   | IoError Text
@@ -344,6 +353,12 @@ instance ToJSON SceneNode where
       object
         [ "kind" .= ("link" :: Text)
         , "target" .= encodeTarget target
+        , "bounds" .= bounds
+        ]
+    SvgDocumentNode file bounds ->
+      object
+        [ "kind" .= ("svg-document" :: Text)
+        , "file" .= file
         , "bounds" .= bounds
         ]
     where

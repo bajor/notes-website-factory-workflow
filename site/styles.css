@@ -48,6 +48,7 @@ body,
 }
 
 .scene-image,
+.scene-svg-document,
 .scene-vector-artwork,
 .scene-path {
   pointer-events: none;

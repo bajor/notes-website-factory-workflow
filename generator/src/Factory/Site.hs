@@ -74,6 +74,7 @@ writeSite templateDirectory outputDirectory title scene = do
             , "paths" .= countNodes isPath scene
             , "texts" .= countNodes isText scene
             , "links" .= countNodes isLink scene
+            , "svgDocuments" .= countNodes isSvgDocument scene
             ]
         )
 
@@ -99,9 +100,11 @@ nodeIsFinite node = case node of
   VectorArtworkNode shapes opacity clips -> all vectorShapeIsFinite shapes && finite opacity && all clipIsFinite clips
   PathNode commands style clips -> all commandIsFinite commands && styleIsFinite style && all clipIsFinite clips
   TextNode run clips -> matrixIsFinite (textMatrix run) && finite (textFontSize run) && finite (textOpacity run) && all clipIsFinite clips
-  LinkNode _ rectangle -> all finite [coordinate (rectX rectangle), coordinate (rectY rectangle), coordinate (rectWidth rectangle), coordinate (rectHeight rectangle)]
-  where
-    coordinate = unCoordinate
+  LinkNode _ rectangle -> rectIsFinite rectangle
+  SvgDocumentNode _ rectangle -> rectIsFinite rectangle
+
+rectIsFinite :: Rect BoardSpace -> Bool
+rectIsFinite rectangle = all (finite . unCoordinate) [rectX rectangle, rectY rectangle, rectWidth rectangle, rectHeight rectangle]
 
 matrixIsFinite :: Matrix -> Bool
 matrixIsFinite (Matrix a b c d e f) = all finite [a, b, c, d, e, f]
@@ -125,7 +128,11 @@ nodeValuesAreValid node = case node of
   VectorArtworkNode shapes opacity _ -> not (null shapes) && unitInterval opacity && all vectorShapeIsValid shapes
   PathNode _ style _ -> paintLineWidth style >= 0 && paintMiterLimit style >= 1 && validDashArray (paintDashArray style) && unitInterval (paintOpacity style) && maybe True (colorIsValid . fst) (paintFill style) && maybe True colorIsValid (paintStroke style)
   TextNode run _ -> textFontSize run > 0 && unitInterval (textOpacity run)
-  LinkNode _ rectangle -> unCoordinate (rectWidth rectangle) > 0 && unCoordinate (rectHeight rectangle) > 0
+  LinkNode _ rectangle -> rectHasArea rectangle
+  SvgDocumentNode _ rectangle -> rectHasArea rectangle
+
+rectHasArea :: Rect BoardSpace -> Bool
+rectHasArea rectangle = unCoordinate (rectWidth rectangle) > 0 && unCoordinate (rectHeight rectangle) > 0
 
 unitInterval :: Double -> Bool
 unitInterval value = value >= 0 && value <= 1
@@ -198,7 +205,7 @@ coverageTolerance = 1 % 1000000000
 countNodes :: (SceneNode -> Bool) -> Scene phase -> Int
 countNodes predicate = length . filter predicate . sceneNodes
 
-isImage, isVectorArtwork, isPath, isText, isLink :: SceneNode -> Bool
+isImage, isVectorArtwork, isPath, isText, isLink, isSvgDocument :: SceneNode -> Bool
 isImage ImageNode {} = True
 isImage _ = False
 isVectorArtwork VectorArtworkNode {} = True
@@ -209,3 +216,5 @@ isText TextNode {} = True
 isText _ = False
 isLink LinkNode {} = True
 isLink _ = False
+isSvgDocument SvgDocumentNode {} = True
+isSvgDocument _ = False
